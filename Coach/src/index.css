@@ -13,6 +13,8 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+*, *::before, *::after { box-sizing: border-box; }
+
 a {
   font-weight: 500;
   color: #646cff;
@@ -22,17 +24,12 @@ a:hover {
   color: #535bf2;
 }
 
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
-}
+p { margin: 0; }
 
 h1 {
   font-size: 3.2em;
   line-height: 1.1;
+  margin: 0;  
 }
 
 button {
@@ -66,3 +63,61 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, sans-serif;
+  color: #0b2545;
+  /* radiant light-blue background */
+  background:
+    radial-gradient(1100px circle at 20% 10%, #dbeafe 0%, transparent 40%),
+    radial-gradient(900px circle at 80% 30%, #bfdbfe 0%, transparent 40%),
+    linear-gradient(180deg, #f8fbff 0%, #e6f3ff 60%);
+}
+
+html, body {
+  height: 100%;
+  overscroll-behavior-y: none;   /* prevents the rubber-band bounce revealing white */
+  background:
+    radial-gradient(1100px circle at 20% 10%, #dbeafe 0%, transparent 40%),
+    radial-gradient(900px circle at 80% 30%, #bfdbfe 0%, transparent 40%),
+    linear-gradient(180deg, #f8fbff 0%, #e6f3ff 60%);
+}
+
+/* center content */
+.main {
+  min-height: 100vh;   /* fallback */
+  min-height: 100dvh;  /* modern, avoids mobile URL-bar issues */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(24px, 5vw, 64px);
+  
+}
+
+/* simple “professional” card */
+.panel {
+  text-align: center;
+  padding: 32px 28px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 12px 32px rgba(14, 165, 233, 0.18);
+}
+
+.btn {
+  margin-top: 12px;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 9999px;
+  background: #0ea5e9;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 10px 20px rgba(14,165,233,.25);
+  transition: transform .1s ease, box-shadow .2s ease, background .2s ease;
+}
+.btn:hover { transform: translateY(-1px); background:#0284c7; box-shadow: 0 14px 28px rgba(14,165,233,.35); }
