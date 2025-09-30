@@ -2,10 +2,10 @@ import logo from "./assets/Logo.png";
 export default function HomePage() {
     return (
       <main className="main">
-        {/* fixed logo at the top-center */}
+        
         <img src={logo} alt="Future Coaching logo" className="logo-lg" />
   
-        {/* ensures all content starts below the fixed logo */}
+       
         <div className="spacer" aria-hidden />
   
         <div className="container">
@@ -14,10 +14,10 @@ export default function HomePage() {
           </p>
   
           <section className="tiles">
-            <button className="tile" type="button"><h2>Option One</h2><p>Short description.</p></button>
-            <button className="tile" type="button"><h2>Option Two</h2><p>Another action.</p></button>
-            <button className="tile" type="button"><h2>Option Three</h2><p>One-line outcome.</p></button>
-            <button className="tile" type="button"><h2>Option Four</h2><p>Big nav button.</p></button>
+            <button className="tile" type="button"><h2>Workout Planning 💭</h2><p>Create and edit your workout split and learn about different workouts.</p></button>
+            <button className="tile" type="button"><h2>Workout Tracker 📝</h2><p>Track your workouts to achieve progressive overload.</p></button>
+            <button className="tile" type="button"><h2>Food Tracker 🍖</h2><p>Document your macro nutrient and calorie intakes.</p></button>
+            <button className="tile" type="button"><h2>Coming Soon🔒</h2><p></p></button>
           </section>
         </div>
       </main>
