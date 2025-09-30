@@ -129,3 +129,13 @@ html, body {
 @media (max-width: 700px) {
   .tiles { grid-template-columns: 1fr; }
 }
+
+/* Landing-only centering (doesn't affect Home) */
+.main.landing-center {
+  align-items: center;           /* horizontal center */
+  justify-content: center;       /* vertical center */
+  padding: clamp(24px, 5vw, 48px);
+}
+
+/* Optional: a nice max width for the card */
+.hero-card { width: min(640px, 92vw); }
