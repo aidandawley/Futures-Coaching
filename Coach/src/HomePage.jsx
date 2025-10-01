@@ -24,7 +24,10 @@ export default function HomePage() {
     <h2>Workout Planning <span className="emoji">💭</span></h2>
     <p>Create and edit your workout split and learn about different workouts.</p>
   </button>
-            <button className="tile" type="button"><h2>Workout Tracker 📝</h2><p>Track your workouts to achieve progressive overload.</p></button>
+  <button className="tile" type="button" onClick={() => navigate("/tracker")}>
+    <h2>Workout Tracker 📝</h2>
+    <p>Track your workouts to achieve progressive overload.</p>
+  </button>
             <button className="tile" type="button"><h2>Food Tracker 🍖</h2><p>Document your macro nutrient and calorie intakes.</p></button>
             <button className="tile" type="button"><h2>Coming Soon🔒</h2><p></p></button>
           </section>
