@@ -204,3 +204,9 @@ html, body {
 }
 .btn:hover  { transform: translateY(-2px); box-shadow: 0 14px 28px rgba(14,165,233,.35); }
 .btn:active { transform: translateY(0); }
+
+.page-center {
+  justify-content: center;
+  align-items: center;
+  padding: clamp(24px, 5vw, 48px);
+}
