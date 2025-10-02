@@ -1,12 +1,15 @@
 import { Link } from "react-router-dom";
 
+import "./styles/planning.css";
+import coachImg from "./assets/Coach.png";
+
 export default function Planning() {
   const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
   return (
     <main className="planning-page">
       <div className="planning-grid">
-        {/* LEFT — Week switcher */}
+      
         <aside className="panel-dark week-panel">
           <header className="panel-head">
             <h2>Week</h2>
@@ -31,7 +34,7 @@ export default function Planning() {
           <Link className="back-link" to="/home">← Back to Home</Link>
         </aside>
 
-        {/* CENTER — Weekly calendar */}
+       
         <section className="panel-dark calendar-panel">
           <header className="panel-head">
             <h2>Weekly Calendar</h2>
@@ -45,7 +48,7 @@ export default function Planning() {
                   <div className="day-date muted">20</div>
                 </div>
 
-                {/* placeholder workout cards */}
+              
                 <div className="workout-card planned">
                   <div className="title">Planned</div>
                   <div className="desc muted">Legs & glutes</div>
@@ -65,11 +68,12 @@ export default function Planning() {
             <h2>AI Coach</h2>
           </header>
 
-          {/* Upload your image later; this box holds the space */}
-          <div className="coach-avatar">
-            {/* <img src={yourImage} alt="AI Coach" /> */}
+          
+          <div className="coach-avatar has-image">
+            <img src={coachImg} alt="AI Coach avatar" />
             <span className="muted">Upload coach image</span>
           </div>
+
 
           <div className="chat-log">
             <div className="msg coach">
