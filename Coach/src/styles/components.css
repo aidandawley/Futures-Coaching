@@ -1,0 +1,101 @@
+/* ===== Shared layout & components ===== */
+
+/* page wrapper used by most screens */
+.main {
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;      /* top-left by default */
+    justify-content: center;
+    padding: 6px 12px;
+  }
+  
+  /* handy center helper for blank pages */
+  .page-center {
+    justify-content: center;
+    align-items: center;
+    padding: clamp(24px, 5vw, 48px);
+  }
+  
+  /* glass card */
+  .panel {
+    text-align: center;
+    padding: 32px 28px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    box-shadow: 0 12px 32px rgba(14, 165, 233, 0.18);
+  }
+  
+  /* CTA pill button */
+  .btn {
+    margin-top: 12px;
+    padding: 10px 16px;
+    border: 0;
+    border-radius: 9999px;
+    background: #0ea5e9;
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 10px 20px rgba(14,165,233,.25);
+    transition: transform .1s ease, box-shadow .2s ease, background .2s ease;
+  }
+  .btn:hover { transform: translateY(-1px); background:#0284c7; box-shadow: 0 14px 28px rgba(14,165,233,.35); }
+  .btn:disabled { opacity: .6; cursor: not-allowed; }
+  
+  /* logo pinned top-center (Home) */
+  .logo-lg {
+    position: fixed;
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: block;
+    width: 480px;
+    max-width: 95vw;
+    height: auto;
+  }
+  
+  /* spacing under fixed logo (Home) */
+  .spacer { height: 180px; }
+  
+  /* Home container & welcome line */
+  .container { width: min(1100px, 96vw); margin: 0 auto; }
+  .welcome-mini { text-align: center; font-size: 14px; opacity: 0.85; margin: 0 0 14px; }
+  
+  /* Tiles grid + cards */
+  .tiles {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(260px, 1fr));
+    gap: clamp(14px, 2.5vw, 24px);
+    margin: 8px 0 48px;
+  }
+  
+  .tile {
+    display: grid;
+    align-content: center;
+    gap: 10px;
+    min-height: clamp(150px, 24vh, 240px);
+    padding: clamp(16px, 4vw, 28px);
+    border: 0;
+    border-radius: 16px;
+    background: rgba(255,255,255,0.65);
+    backdrop-filter: blur(6px);
+    box-shadow: var(--shadow);
+    text-align: left;
+    cursor: pointer;
+    transition: transform .2s ease, box-shadow .25s ease, background .25s ease, border-color .25s ease;
+  }
+  .tile:hover  { transform: translateY(-2px); box-shadow: 0 16px 36px rgba(14,165,233,0.28); }
+  .tile[disabled] { opacity:.6; cursor:not-allowed; transform:none; }
+  .tile h2 { margin: 0; font-family: var(--font-display); font-weight: 800; letter-spacing: .2px; font-size: clamp(18px, 2vw, 24px); }
+  .tile p  { margin: 0; opacity: 0.9; }
+  
+  @media (max-width: 700px) {
+    .tiles { grid-template-columns: 1fr; }
+  }
+  
+  /* Landing page centering helpers (if you use them) */
+  .main.landing-center { align-items: center; justify-content: center; padding: clamp(24px, 5vw, 48px); }
+  .hero-card { width: min(640px, 92vw); }
+  

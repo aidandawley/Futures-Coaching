@@ -1,0 +1,47 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@700;800&display=swap');
+
+/* ===== Global baseline ===== */
+#root { padding: 0 !important; margin: 0; max-width: none; }
+*, *::before, *::after { box-sizing: border-box; }
+
+/* Design tokens & base text */
+:root {
+  /* fonts */
+  --font-sans: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  --font-display: "Outfit", var(--font-sans);
+
+  /* colors & tokens */
+  --ink: #0b2545;
+  --brand: #0ea5e9;
+  --radius: 16px;
+  --shadow: 0 10px 28px rgba(14,165,233,0.20);
+
+  /* text rendering */
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  font-weight: 400;
+  color: var(--ink);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Base elements */
+a { color: #646cff; text-decoration: none; font-weight: 500; }
+a:hover { color: #535bf2; }
+h1 { font-size: 3.2em; line-height: 1.1; margin: 0; }
+p { margin: 0; }
+
+html, body, #root { height: 100%; }
+
+/* Light radiant site background (Home/Landing) */
+html, body {
+  margin: 0;
+  color: var(--ink);
+  overscroll-behavior-y: none;
+  background:
+    radial-gradient(1100px circle at 20% 10%, #dbeafe 0%, transparent 40%),
+    radial-gradient(900px circle at 80% 30%, #bfdbfe 0%, transparent 40%),
+    linear-gradient(180deg, #f8fbff 0%, #e6f3ff 60%);
+}

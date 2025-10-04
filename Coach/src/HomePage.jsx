@@ -1,11 +1,15 @@
 import { useNavigate } from "react-router-dom";
-import logo from "./assets/Logo.png";
+import logo from "./assets/Logo2.png";
+import "./styles/home.css";
+
 export default function HomePage() {
   const navigate = useNavigate();
     return (
-      <main className="main">
+      <main className="main home-page">
         
-        <img src={logo} alt="Future Coaching logo" className="logo-lg" />
+        <div className="logo-card">
+           <img src={logo} alt="Future Coaching logo" className="logo-lg" />
+        </div>
   
        
         <div className="spacer" aria-hidden />
