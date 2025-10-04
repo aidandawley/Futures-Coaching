@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import "./styles/food.css";
 import coachImg from "./assets/Coach.png";
@@ -11,7 +11,6 @@ function nowHHMM() {
 }
 
 export default function Food() {
-  // seed with the two sample entries you already saw
   const [entries, setEntries] = useState([
     { id: 1, title: "Entry #1", time: "12:00", calories: 450, protein: 35, carbs: 48, fat: 14 },
     { id: 2, title: "Entry #2", time: "19:30", calories: 620, protein: 42, carbs: 70, fat: 20 },
@@ -26,45 +25,46 @@ export default function Food() {
     fat: "",
   });
 
+  // totals update whenever entries change
+  const totals = useMemo(() => {
+    return entries.reduce(
+      (a, e) => ({
+        calories: a.calories + (e.calories || 0),
+        protein:  a.protein  + (e.protein  || 0),
+        carbs:    a.carbs    + (e.carbs    || 0),
+        fat:      a.fat      + (e.fat      || 0),
+      }),
+      { calories: 0, protein: 0, carbs: 0, fat: 0 }
+    );
+  }, [entries]);
+
   const resetDraft = () => {
     setDraft({ title: "", time: nowHHMM(), calories: "", protein: "", carbs: "", fat: "" });
   };
 
-  const openForm = () => {
-    resetDraft();
-    setShowForm(true);
-  };
-
-  const cancelForm = () => {
-    setShowForm(false);
-    resetDraft();
-  };
+  const openForm = () => { resetDraft(); setShowForm(true); };
+  const cancelForm = () => { setShowForm(false); resetDraft(); };
 
   const saveEntry = (e) => {
     e.preventDefault();
     const nextId = entries.length ? Math.max(...entries.map(x => x.id)) + 1 : 1;
     const title = draft.title.trim() || `Entry #${nextId}`;
     const time  = draft.time.trim() || nowHHMM();
-
     const toNum = (v) => (v === "" ? 0 : Math.max(0, Number(v) || 0));
+
     const newEntry = {
-      id: nextId,
-      title,
-      time,
+      id: nextId, title, time,
       calories: toNum(draft.calories),
       protein:  toNum(draft.protein),
       carbs:    toNum(draft.carbs),
       fat:      toNum(draft.fat),
     };
-
-    setEntries((prev) => [newEntry, ...prev]); // newest on top
+    setEntries((prev) => [newEntry, ...prev]);
     setShowForm(false);
     resetDraft();
   };
 
-  const removeEntry = (id) => {
-    setEntries((prev) => prev.filter((e) => e.id !== id));
-  };
+  const removeEntry = (id) => setEntries((prev) => prev.filter((e) => e.id !== id));
 
   return (
     <main className="food-page">
@@ -75,20 +75,15 @@ export default function Food() {
             <h2>Goals</h2>
           </header>
 
-          <textarea
-            className="notes-input"
-            placeholder="Write today's nutrition goals…"
-          />
-
+          <textarea className="notes-input" placeholder="Write today's nutrition goals…" />
           <ul className="notes-tips muted">
             <li>set protein first, then split remaining calories.</li>
             <li>aim for whole foods & fiber.</li>
           </ul>
-
           <Link className="back-link" to="/home">← Back to Home</Link>
         </aside>
 
-        {/* center — food log (scrolls) */}
+        {/* center — food log */}
         <section className="panel-dark log-panel">
           <header className="panel-head">
             <h2>Food Log</h2>
@@ -100,7 +95,18 @@ export default function Food() {
           </header>
 
           <div className="log-body">
-            {/* add form (inline) */}
+            {/* totals at the top */}
+            <div className="summary-card">
+              <div className="summary-head"><span className="muted">Totals</span></div>
+              <div className="summary-row">
+                <div className="metric"><div className="label">Calories</div><div className="value">{totals.calories}</div><div className="unit">kcal</div></div>
+                <div className="metric"><div className="label">Protein</div><div className="value">{totals.protein}</div><div className="unit">g</div></div>
+                <div className="metric"><div className="label">Carbs</div><div className="value">{totals.carbs}</div><div className="unit">g</div></div>
+                <div className="metric"><div className="label">Fat</div><div className="value">{totals.fat}</div><div className="unit">g</div></div>
+              </div>
+            </div>
+
+            {/* add form */}
             {showForm && (
               <form className="entry-card add-form" onSubmit={saveEntry}>
                 <div className="row">
@@ -169,7 +175,7 @@ export default function Food() {
               </form>
             )}
 
-            {/* add tile (opens form) */}
+            {/* add tile */}
             {!showForm && (
               <button className="entry-card add" type="button" onClick={openForm}>
                 <span className="plus">＋</span>
@@ -186,32 +192,14 @@ export default function Food() {
                 </div>
 
                 <div className="metrics">
-                  <div className="metric">
-                    <div className="label">Calories</div>
-                    <div className="value">{e.calories}</div>
-                    <div className="unit">kcal</div>
-                  </div>
-                  <div className="metric">
-                    <div className="label">Protein</div>
-                    <div className="value">{e.protein}</div>
-                    <div className="unit">g</div>
-                  </div>
-                  <div className="metric">
-                    <div className="label">Carbs</div>
-                    <div className="value">{e.carbs}</div>
-                    <div className="unit">g</div>
-                  </div>
-                  <div className="metric">
-                    <div className="label">Fat</div>
-                    <div className="value">{e.fat}</div>
-                    <div className="unit">g</div>
-                  </div>
+                  <div className="metric"><div className="label">Calories</div><div className="value">{e.calories}</div><div className="unit">kcal</div></div>
+                  <div className="metric"><div className="label">Protein</div><div className="value">{e.protein}</div><div className="unit">g</div></div>
+                  <div className="metric"><div className="label">Carbs</div><div className="value">{e.carbs}</div><div className="unit">g</div></div>
+                  <div className="metric"><div className="label">Fat</div><div className="value">{e.fat}</div><div className="unit">g</div></div>
                 </div>
 
                 <div className="card-actions">
-                  <button className="ghost small" type="button" onClick={() => removeEntry(e.id)}>
-                    Remove
-                  </button>
+                  <button className="ghost small" type="button" onClick={() => removeEntry(e.id)}>Remove</button>
                 </div>
               </article>
             ))}
@@ -220,20 +208,13 @@ export default function Food() {
 
         {/* right — coach */}
         <aside className="panel-dark coach-panel">
-          <header className="panel-head">
-            <h2>AI Coach</h2>
-          </header>
-
-          <div className="coach-avatar has-image">
-            <img src={coachImg} alt="AI Coach" />
-          </div>
-
+          <header className="panel-head"><h2>AI Coach</h2></header>
+          <div className="coach-avatar has-image"><img src={coachImg} alt="AI Coach" /></div>
           <div className="chat-log">
             <div className="msg coach">How are your meals today?</div>
             <div className="msg user">Good! Hit my protein at lunch.</div>
             <div className="msg coach">Nice — keep fiber high at dinner.</div>
           </div>
-
           <form className="chat-input" onSubmit={(e)=>e.preventDefault()}>
             <input type="text" placeholder="Ask your coach…" />
             <button className="btn btn--blue" type="submit">Send</button>
