@@ -17,6 +17,10 @@ app.add_middleware(
 
 models.Base.metadata.create_all(bind=engine)
 
+app.include_router(users.router)
+app.include_router(workouts.router)
+app.include_router(sets.router)
+
 @app.get("/")
 def read_root():
     return {"message": "FastAPI backend is running"}
