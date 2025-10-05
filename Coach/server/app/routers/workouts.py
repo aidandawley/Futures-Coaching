@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from db import models
-from db.database import get_db
-from schemas.workout import WorkoutCreate, WorkoutRead
-from schemas.workout import WorkoutWithSets  
+from ..db import models
+from ..db.database import get_db
+from ..schemas.workout import WorkoutCreate, WorkoutRead
+from ..schemas.workout import WorkoutCreate, WorkoutRead, WorkoutWithSets 
 from sqlalchemy.orm import Session, joinedload 
-from schemas.workout import WorkoutWithSets
+
 router = APIRouter(prefix="/workouts", tags=["Workouts"])
 
 @router.post("/", response_model=WorkoutRead)

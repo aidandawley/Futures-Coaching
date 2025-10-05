@@ -5,7 +5,6 @@ class SetBase(BaseModel):
     exercise: str
     reps: int
     weight: float
-    rpe: Optional[float] = None
 
 class SetCreate(SetBase):
     workout_id: int
@@ -13,6 +12,10 @@ class SetCreate(SetBase):
 class SetRead(SetBase):
     id: int
     workout_id: int
-
     class Config:
         from_attributes = True
+
+class SetUpdate(BaseModel):
+    exercise: Optional[str] = None
+    reps: Optional[int] = None
+    weight: Optional[float] = None
