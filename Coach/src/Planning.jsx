@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 
 import "./styles/planning.css";
 import coachImg from "./assets/Coach.png";
+import { createWorkout, listWorkoutsByUser } from "./lib/api";
 
 export default function Planning() {
   const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];

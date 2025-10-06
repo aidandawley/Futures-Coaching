@@ -22,3 +22,14 @@ export async function fetchJSON(path, { method = "GET", body } = {}) {
 export function ping() {
   return fetchJSON("/");
 }
+
+export function listWorkoutsByUser(userId) {
+    return fetchJSON(`/workouts/by_user/${userId}/with_sets`);
+  }
+
+export function createWorkout({ user_id, title, notes }) {
+  return fetchJSON("/workouts/", {
+    method: "POST",
+    body: { user_id, title, notes },
+  });
+}
