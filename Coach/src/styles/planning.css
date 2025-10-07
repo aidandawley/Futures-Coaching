@@ -179,3 +179,32 @@
 
 /* base page color behind translucency (prevents white stripes) */
 html, body { background-color: #0b1220; }
+
+.week-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+}
+.day-cell {
+  text-align: left;
+  padding: 8px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  min-height: 92px;
+  cursor: pointer;
+}
+.day-head { display: flex; align-items: center; }
+.day-name { font-size: 12px; }
+.day-date { font-weight: 600; }
+.badge {
+  display: inline-block;
+  min-width: 20px;
+  padding: 0 6px;
+  font-size: 12px;
+  line-height: 20px;
+  border-radius: 10px;
+  background: var(--blue, #3b82f6);
+  color: white;
+  text-align: center;
+}

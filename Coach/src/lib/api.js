@@ -42,3 +42,17 @@ export function listWorkoutsInRange(userId, start, end) {
 export function listWorkoutsOnDay(userId, day) {
   return fetchJSON(`/workouts/by_user/${userId}/on/${day}`);
 }
+
+export async function createWorkout(payload) {
+  // payload shape: { user_id, title?, notes?, scheduled_for? }
+  const res = await fetch(`${API}/workouts/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `POST /workouts failed (${res.status})`);
+  }
+  return res.json();
+}
