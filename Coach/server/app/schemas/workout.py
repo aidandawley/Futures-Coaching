@@ -8,6 +8,7 @@ class WorkoutBase(BaseModel):
     title: Optional[str] = None
     notes: Optional[str] = None
     scheduled_for: Optional[date] = None
+    status: Optional[str] = "planned"
 class WorkoutCreate(WorkoutBase):
     user_id: int
 

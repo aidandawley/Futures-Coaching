@@ -216,3 +216,97 @@ html, body { background-color: #0b1220; }
   background: rgba(255,255,255,0.04); color: inherit; padding: 10px;
 }
 .error { color: #ef4444; font-size: 13px; }
+
+/* Day cell polish */
+.week-grid .day-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 12px 12px 14px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.03);
+  transition: background 0.15s ease, transform 0.05s ease;
+}
+.week-grid .day-cell:hover {
+  background: rgba(255,255,255,0.06);
+}
+.week-grid .day-cell:active {
+  transform: translateY(1px);
+}
+
+.day-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.day-head .day-name {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.day-head .day-date {
+  font-weight: 600;
+  font-size: 16px;
+}
+.badge {
+  margin-left: auto;
+  background: #2d6cff;
+  color: white;
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1;
+  padding: 6px 8px;
+  border-radius: 999px;
+}
+
+/* Workout preview list inside a day */
+.workout-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workout-chip {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+.w-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+
+.w-notes {
+  font-size: 12px;
+  opacity: .8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis; /* keep notes on one clean line */
+}
+
+.workout-preview .more {
+  font-size: 12px;
+  opacity: .85;
+}
+
+.chips { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 600;
+}
+.chip--planned { background: #1e3a8a; color: #c7d2fe; }  /* indigo */
+.chip--done    { background: #14532d; color: #bbf7d0; }  /* green  */
+.chip--rest    { background: #7c2d12; color: #fed7aa; }  /* amber  */
+.chip--more    { background: #334155; color: #e2e8f0; }  /* slate  */
+
+.row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

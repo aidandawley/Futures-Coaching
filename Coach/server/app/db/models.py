@@ -2,7 +2,7 @@ from datetime import datetime, date
 
 from typing import List, Optional
 
-from sqlalchemy import String, Integer, Float, DateTime, ForeignKey
+from sqlalchemy import String, Integer, Float, DateTime, ForeignKey, Column, Date
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -28,7 +28,8 @@ class WorkoutSession(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     notes: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     scheduled_for: Mapped[date | None] = mapped_column(nullable=True)
-
+    status = Column(String, default="planned")
+    
     user: Mapped["User"] = relationship(back_populates="workouts")
     sets: Mapped[List["ExerciseSet"]] = relationship(
         back_populates="workout", cascade="all, delete-orphan"

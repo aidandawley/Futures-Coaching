@@ -4,7 +4,9 @@ import { Link } from "react-router-dom";
 
 import "./styles/planning.css";
 import coachImg from "./assets/Coach.png";
-import { listWorkoutsInRange, createWorkout } from "./lib/api"; // NEW
+// If this file is at src/Planning.jsx and api is at src/lib/api.js,
+// this path is correct:
+import { listWorkoutsInRange, createWorkout } from "./lib/api";
 
 // --- helpers ---
 function toISODate(d) {
@@ -24,23 +26,31 @@ function getWeekStart(d) {
   return x;
 }
 
+function Chip({ status = "planned" }) {
+  const label =
+    status === "done" ? "Completed" :
+    status === "rest" ? "Rest" :
+    "Planned";
+  return <span className={`chip chip--${status}`}>{label}</span>;
+}
+
 export default function Planning() {
-  const userId = 1; // TODO: replace with real current user
+  const userId = 1; // TODO: real current user
 
   const [currentWeekStart, setCurrentWeekStart] = useState(getWeekStart(new Date()));
-  const [workoutsByDay, setWorkoutsByDay] = useState({}); // { "YYYY-MM-DD": [workout, ...], ... }
+  const [workoutsByDay, setWorkoutsByDay] = useState({}); // { "YYYY-MM-DD": [workout, ...] }
 
   // Day panel state
   const [selectedDayISO, setSelectedDayISO] = useState(null);
   const [isDayOpen, setIsDayOpen] = useState(false);
 
-  // Add form state (NEW)
+  // Add form state
   const [newTitle, setNewTitle] = useState("");
   const [newNotes, setNewNotes] = useState("");
+  const [newStatus, setNewStatus] = useState("planned");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
 
-  // Load week helper (so we can call it from useEffect and after save)  // NEW
   async function loadWeek(weekStart) {
     const startISO = toISODate(weekStart);
     const endISO = toISODate(addDays(weekStart, 6));
@@ -50,10 +60,10 @@ export default function Planning() {
       for (const w of rows) {
         const key = w.scheduled_for;
         if (!key) continue;
-        (map[key] ||= []).push(w);
+        if (!map[key]) map[key] = [];   // ✅ avoid `||=`
+        map[key].push(w);
       }
       setWorkoutsByDay(map);
-      // console.log("week workouts:", map);
     } catch (err) {
       console.error("week range load error:", err);
       setWorkoutsByDay({});
@@ -65,23 +75,15 @@ export default function Planning() {
   }, [currentWeekStart]);
 
   // week controls
-  function prevWeek() {
-    setCurrentWeekStart(addDays(currentWeekStart, -7));
-  }
-  function nextWeek() {
-    setCurrentWeekStart(addDays(currentWeekStart, 7));
-  }
-  function goToToday() {
-    setCurrentWeekStart(getWeekStart(new Date()));
-  }
+  function prevWeek() { setCurrentWeekStart(addDays(currentWeekStart, -7)); }
+  function nextWeek() { setCurrentWeekStart(addDays(currentWeekStart, 7)); }
+  function goToToday() { setCurrentWeekStart(getWeekStart(new Date())); }
 
   const weekEnd = addDays(currentWeekStart, 6);
   const weekLabel = `${currentWeekStart.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
+    month: "short", day: "numeric",
   })} – ${weekEnd.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
 
-  // Build the 7 days of this week
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i));
   const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -90,13 +92,11 @@ export default function Planning() {
     setIsDayOpen(true);
     setNewTitle("");
     setNewNotes("");
+    setNewStatus("planned");
     setSaveError("");
   }
-  function closeDay() {
-    setIsDayOpen(false);
-  }
+  function closeDay() { setIsDayOpen(false); }
 
-  // Save handler (NEW)
   async function handleAddWorkout(e) {
     e.preventDefault();
     if (!selectedDayISO) return;
@@ -108,15 +108,13 @@ export default function Planning() {
         user_id: userId,
         title: newTitle || "Workout",
         notes: newNotes || "",
-        scheduled_for: selectedDayISO, // important
+        scheduled_for: selectedDayISO,
+        status: newStatus,
       });
-
-      // refresh this week
-      await loadWeek(currentWeekStart);
-
-      // clear form (keep modal open so user sees result)
+      await loadWeek(currentWeekStart);   // refresh
       setNewTitle("");
       setNewNotes("");
+      setNewStatus("planned");
     } catch (err) {
       console.error(err);
       setSaveError(err.message || "Failed to save workout");
@@ -133,41 +131,25 @@ export default function Planning() {
           <header className="panel-head">
             <h2>Week</h2>
             <div className="week-nav">
-              <button type="button" className="ghost" onClick={prevWeek}>
-                ←
-              </button>
-              <button type="button" className="ghost" onClick={nextWeek}>
-                →
-              </button>
-              <button type="button" className="btn btn--blue" onClick={goToToday}>
-                Go to Today
-              </button>
+              <button type="button" className="ghost" onClick={prevWeek}>←</button>
+              <button type="button" className="ghost" onClick={nextWeek}>→</button>
+              <button type="button" className="btn btn--blue" onClick={goToToday}>Go to Today</button>
             </div>
           </header>
 
           <div className="week-meta">
             <div className="muted">Week of</div>
             <div className="week-range">{weekLabel}</div>
-            <button type="button" className="btn btn--blue" onClick={goToToday}>
-              Go to Today
-            </button>
+            <button type="button" className="btn btn--blue" onClick={goToToday}>Go to Today</button>
           </div>
 
           <ul className="legend">
-            <li>
-              <span className="dot done" /> Completed
-            </li>
-            <li>
-              <span className="dot plan" /> Planned
-            </li>
-            <li>
-              <span className="dot rest" /> Recovery/Rest
-            </li>
+            <li><span className="dot done" /> Completed</li>
+            <li><span className="dot planned" /> Planned</li>{/* ✅ match CSS class */}
+            <li><span className="dot rest" /> Recovery/Rest</li>
           </ul>
 
-          <Link className="back-link" to="/home">
-            ← Back to Home
-          </Link>
+          <Link className="back-link" to="/home">← Back to Home</Link>
         </aside>
 
         {/* MIDDLE — weekly calendar */}
@@ -175,13 +157,9 @@ export default function Planning() {
           <header className="panel-head">
             <h2>Weekly Calendar</h2>
             <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-              <button type="button" className="ghost" onClick={prevWeek}>
-                ←
-              </button>
+              <button type="button" className="ghost" onClick={prevWeek}>←</button>
               <div className="muted">{weekLabel}</div>
-              <button type="button" className="ghost" onClick={nextWeek}>
-                →
-              </button>
+              <button type="button" className="ghost" onClick={nextWeek}>→</button>
             </div>
           </header>
 
@@ -210,10 +188,20 @@ export default function Planning() {
                   </div>
 
                   {items.length > 0 && (
-                    <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
-                      {items[0].title || "Workout"}
-                      {items.length > 1 ? ` +${items.length - 1} more` : ""}
-                    </div>
+                    <>
+                      <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
+                        {items[0].title || "Workout"}
+                        {items.length > 1 ? ` +${items.length - 1} more` : ""}
+                      </div>
+                      <div className="chips">
+                        {items.slice(0, 3).map((w) => (
+                          <Chip key={w.id} status={w.status || "planned"} />
+                        ))}
+                        {items.length > 3 && (
+                          <span className="chip chip--more">+{items.length - 3}</span>
+                        )}
+                      </div>
+                    </>
                   )}
                 </button>
               );
@@ -223,26 +211,19 @@ export default function Planning() {
 
         {/* RIGHT — AI Coach */}
         <aside className="panel-dark coach-panel">
-          <header className="panel-head">
-            <h2>AI Coach</h2>
-          </header>
-
+          <header className="panel-head"><h2>AI Coach</h2></header>
           <div className="coach-avatar has-image">
             <img src={coachImg} alt="AI Coach avatar" />
             <span className="muted">Upload coach image</span>
           </div>
-
           <div className="chat-log">
             <div className="msg coach">How was your chest workout?</div>
             <div className="msg user">Felt strong! Bench moved well.</div>
             <div className="msg coach">Great! We’ll add 2.5–5 lb next session.</div>
           </div>
-
-          <form className="chat-input" onSubmit={(e) => e.preventDefault()}>
+          <form className="chat-input" onSubmit={(e)=>e.preventDefault()}>
             <input type="text" placeholder="Ask your coach…" />
-            <button type="submit" className="btn btn--blue">
-              Send
-            </button>
+            <button type="submit" className="btn btn--blue">Send</button>
           </form>
         </aside>
       </div>
@@ -254,13 +235,10 @@ export default function Planning() {
           <div className="day-modal__card">
             <header className="day-modal__head">
               <h3>Plan for {selectedDayISO}</h3>
-              <button type="button" className="ghost" onClick={closeDay}>
-                ✕
-              </button>
+              <button type="button" className="ghost" onClick={closeDay}>✕</button>
             </header>
 
             <div className="day-modal__body">
-              {/* existing workouts */}
               {(() => {
                 const items = workoutsByDay[selectedDayISO] || [];
                 if (items.length === 0) return <p className="muted">No workouts scheduled.</p>;
@@ -268,7 +246,10 @@ export default function Planning() {
                   <ul className="day-list">
                     {items.map((w) => (
                       <li key={w.id}>
-                        <div className="title">{w.title || "Workout"}</div>
+                        <div className="row">
+                          <div className="title">{w.title || "Workout"}</div>
+                          <Chip status={w.status || "planned"} />
+                        </div>
                         {w.notes ? <div className="muted">{w.notes}</div> : null}
                       </li>
                     ))}
@@ -276,7 +257,6 @@ export default function Planning() {
                 );
               })()}
 
-              {/* Add form */}
               <form onSubmit={handleAddWorkout} className="add-form">
                 <div className="field">
                   <label>Title</label>
@@ -296,11 +276,15 @@ export default function Planning() {
                     placeholder="Optional notes…"
                   />
                 </div>
-                {saveError && (
-                  <div className="error" role="alert">
-                    {saveError}
-                  </div>
-                )}
+                <div className="field">
+                  <label>Status</label>
+                  <select value={newStatus} onChange={(e) => setNewStatus(e.target.value)}>
+                    <option value="planned">Planned</option>
+                    <option value="done">Completed</option>
+                    <option value="rest">Recovery/Rest</option>
+                  </select>
+                </div>
+                {saveError && <div className="error" role="alert">{saveError}</div>}
                 <div className="day-modal__foot">
                   <button type="submit" className="btn btn--blue" disabled={saving}>
                     {saving ? "Saving…" : "+ Add workout"}
