@@ -1,3 +1,4 @@
+// src/lib/api.js
 const BASE_URL = "http://127.0.0.1:8000";
 
 export async function fetchJSON(path, { method = "GET", body } = {}) {
@@ -23,14 +24,16 @@ export function ping() {
   return fetchJSON("/");
 }
 
+// (still available if you use it elsewhere)
 export function listWorkoutsByUser(userId) {
-    return fetchJSON(`/workouts/by_user/${userId}/with_sets`);
-  }
+  return fetchJSON(`/workouts/by_user/${userId}/with_sets`);
+}
 
-export function createWorkout({ user_id, title, notes }) {
+// ✅ single, unified createWorkout (scheduled_for is optional)
+export function createWorkout({ user_id, title, notes, scheduled_for } = {}) {
   return fetchJSON("/workouts/", {
     method: "POST",
-    body: { user_id, title, notes },
+    body: { user_id, title, notes, scheduled_for },
   });
 }
 
@@ -41,18 +44,4 @@ export function listWorkoutsInRange(userId, start, end) {
 
 export function listWorkoutsOnDay(userId, day) {
   return fetchJSON(`/workouts/by_user/${userId}/on/${day}`);
-}
-
-export async function createWorkout(payload) {
-  // payload shape: { user_id, title?, notes?, scheduled_for? }
-  const res = await fetch(`${API}/workouts/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `POST /workouts failed (${res.status})`);
-  }
-  return res.json();
 }

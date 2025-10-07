@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 
 import "./styles/planning.css";
 import coachImg from "./assets/Coach.png";
-import { listWorkoutsInRange } from "./lib/api";
+import { listWorkoutsInRange, createWorkout } from "./lib/api"; // NEW
 
 // --- helpers ---
 function toISODate(d) {
@@ -30,26 +30,38 @@ export default function Planning() {
   const [currentWeekStart, setCurrentWeekStart] = useState(getWeekStart(new Date()));
   const [workoutsByDay, setWorkoutsByDay] = useState({}); // { "YYYY-MM-DD": [workout, ...], ... }
 
-  // Load workouts for the current week (Mon–Sun)
-  useEffect(() => {
-    const startISO = toISODate(currentWeekStart);
-    const endISO = toISODate(addDays(currentWeekStart, 6));
+  // Day panel state
+  const [selectedDayISO, setSelectedDayISO] = useState(null);
+  const [isDayOpen, setIsDayOpen] = useState(false);
 
-    listWorkoutsInRange(userId, startISO, endISO)
-      .then((rows) => {
-        const map = {};
-        for (const w of rows) {
-          const key = w.scheduled_for;
-          if (!key) continue;
-          (map[key] ||= []).push(w);
-        }
-        setWorkoutsByDay(map);
-        console.log("week workouts:", map);
-      })
-      .catch((err) => {
-        console.error("week range load error:", err);
-        setWorkoutsByDay({});
-      });
+  // Add form state (NEW)
+  const [newTitle, setNewTitle] = useState("");
+  const [newNotes, setNewNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  // Load week helper (so we can call it from useEffect and after save)  // NEW
+  async function loadWeek(weekStart) {
+    const startISO = toISODate(weekStart);
+    const endISO = toISODate(addDays(weekStart, 6));
+    try {
+      const rows = await listWorkoutsInRange(userId, startISO, endISO);
+      const map = {};
+      for (const w of rows) {
+        const key = w.scheduled_for;
+        if (!key) continue;
+        (map[key] ||= []).push(w);
+      }
+      setWorkoutsByDay(map);
+      // console.log("week workouts:", map);
+    } catch (err) {
+      console.error("week range load error:", err);
+      setWorkoutsByDay({});
+    }
+  }
+
+  useEffect(() => {
+    loadWeek(currentWeekStart);
   }, [currentWeekStart]);
 
   // week controls
@@ -72,6 +84,46 @@ export default function Planning() {
   // Build the 7 days of this week
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i));
   const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+  function openDay(iso) {
+    setSelectedDayISO(iso);
+    setIsDayOpen(true);
+    setNewTitle("");
+    setNewNotes("");
+    setSaveError("");
+  }
+  function closeDay() {
+    setIsDayOpen(false);
+  }
+
+  // Save handler (NEW)
+  async function handleAddWorkout(e) {
+    e.preventDefault();
+    if (!selectedDayISO) return;
+
+    setSaving(true);
+    setSaveError("");
+    try {
+      await createWorkout({
+        user_id: userId,
+        title: newTitle || "Workout",
+        notes: newNotes || "",
+        scheduled_for: selectedDayISO, // important
+      });
+
+      // refresh this week
+      await loadWeek(currentWeekStart);
+
+      // clear form (keep modal open so user sees result)
+      setNewTitle("");
+      setNewNotes("");
+    } catch (err) {
+      console.error(err);
+      setSaveError(err.message || "Failed to save workout");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <main className="planning-page">
@@ -146,7 +198,7 @@ export default function Planning() {
                   key={iso}
                   type="button"
                   className="day-cell"
-                  onClick={() => console.log("clicked", iso, items)}
+                  onClick={() => openDay(iso)}
                   title={items.length ? `${items.length} workout(s)` : ""}
                 >
                   <div className="day-head" style={{ justifyContent: "space-between" }}>
@@ -157,7 +209,6 @@ export default function Planning() {
                     {items.length > 0 && <span className="badge">{items.length}</span>}
                   </div>
 
-                  {/* (optional) quick peek of first workout */}
                   {items.length > 0 && (
                     <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
                       {items[0].title || "Workout"}
@@ -170,7 +221,7 @@ export default function Planning() {
           </div>
         </section>
 
-        {/* RIGHT — AI Coach (unchanged) */}
+        {/* RIGHT — AI Coach */}
         <aside className="panel-dark coach-panel">
           <header className="panel-head">
             <h2>AI Coach</h2>
@@ -195,6 +246,71 @@ export default function Planning() {
           </form>
         </aside>
       </div>
+
+      {/* DAY MODAL */}
+      {isDayOpen && (
+        <div className="day-modal">
+          <div className="day-modal__backdrop" onClick={closeDay} />
+          <div className="day-modal__card">
+            <header className="day-modal__head">
+              <h3>Plan for {selectedDayISO}</h3>
+              <button type="button" className="ghost" onClick={closeDay}>
+                ✕
+              </button>
+            </header>
+
+            <div className="day-modal__body">
+              {/* existing workouts */}
+              {(() => {
+                const items = workoutsByDay[selectedDayISO] || [];
+                if (items.length === 0) return <p className="muted">No workouts scheduled.</p>;
+                return (
+                  <ul className="day-list">
+                    {items.map((w) => (
+                      <li key={w.id}>
+                        <div className="title">{w.title || "Workout"}</div>
+                        {w.notes ? <div className="muted">{w.notes}</div> : null}
+                      </li>
+                    ))}
+                  </ul>
+                );
+              })()}
+
+              {/* Add form */}
+              <form onSubmit={handleAddWorkout} className="add-form">
+                <div className="field">
+                  <label>Title</label>
+                  <input
+                    type="text"
+                    value={newTitle}
+                    onChange={(e) => setNewTitle(e.target.value)}
+                    placeholder="e.g., Push Day"
+                  />
+                </div>
+                <div className="field">
+                  <label>Notes</label>
+                  <textarea
+                    rows={3}
+                    value={newNotes}
+                    onChange={(e) => setNewNotes(e.target.value)}
+                    placeholder="Optional notes…"
+                  />
+                </div>
+                {saveError && (
+                  <div className="error" role="alert">
+                    {saveError}
+                  </div>
+                )}
+                <div className="day-modal__foot">
+                  <button type="submit" className="btn btn--blue" disabled={saving}>
+                    {saving ? "Saving…" : "+ Add workout"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
