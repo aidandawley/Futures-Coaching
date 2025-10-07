@@ -33,3 +33,12 @@ export function createWorkout({ user_id, title, notes }) {
     body: { user_id, title, notes },
   });
 }
+
+export function listWorkoutsInRange(userId, start, end) {
+  const params = new URLSearchParams({ start, end }).toString();
+  return fetchJSON(`/workouts/by_user/${userId}/range?${params}`);
+}
+
+export function listWorkoutsOnDay(userId, day) {
+  return fetchJSON(`/workouts/by_user/${userId}/on/${day}`);
+}

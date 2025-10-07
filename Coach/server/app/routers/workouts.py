@@ -5,6 +5,9 @@ from ..db.database import get_db
 from ..schemas.workout import WorkoutCreate, WorkoutRead
 from ..schemas.workout import WorkoutCreate, WorkoutRead, WorkoutWithSets 
 from sqlalchemy.orm import Session, joinedload 
+from fastapi import Query
+
+from datetime import date
 
 router = APIRouter(prefix="/workouts", tags=["Workouts"])
 
@@ -47,5 +50,35 @@ def list_user_workouts_with_sets(user_id: int, db: Session = Depends(get_db)):
         .options(joinedload(models.WorkoutSession.sets))
         .filter(models.WorkoutSession.user_id == user_id)
         .order_by(models.WorkoutSession.started_at.desc())
+        .all()
+    )
+
+@router.get("/by_user/{user_id}/range", response_model=list[WorkoutRead])
+def list_workouts_in_range(
+    user_id: int,
+    start: date = Query(..., description="YYYY-MM-DD"),
+    end: date = Query(..., description="YYYY-MM-DD"),
+    db: Session = Depends(get_db),
+):
+    return (
+        db.query(models.WorkoutSession)
+        .filter(models.WorkoutSession.user_id == user_id)
+        .filter(models.WorkoutSession.scheduled_for >= start)
+        .filter(models.WorkoutSession.scheduled_for <= end)
+        .order_by(models.WorkoutSession.scheduled_for.asc())
+        .all()
+    )
+
+@router.get("/by_user/{user_id}/on/{day}", response_model=list[WorkoutRead])
+def list_workouts_on_day(
+    user_id: int,
+    day: date,
+    db: Session = Depends(get_db),
+):
+    return (
+        db.query(models.WorkoutSession)
+        .filter(models.WorkoutSession.user_id == user_id)
+        .filter(models.WorkoutSession.scheduled_for == day)
+        .order_by(models.WorkoutSession.started_at.asc())
         .all()
     )

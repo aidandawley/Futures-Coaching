@@ -1,11 +1,13 @@
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, date
 from pydantic import BaseModel
+from typing import Optional, List
+from fastapi import Query
+
 
 class WorkoutBase(BaseModel):
     title: Optional[str] = None
     notes: Optional[str] = None
-
+    scheduled_for: Optional[date] = None
 class WorkoutCreate(WorkoutBase):
     user_id: int
 
@@ -17,7 +19,6 @@ class WorkoutRead(WorkoutBase):
     class Config:
         from_attributes = True
 
-from typing import List
 from .set import SetRead  # add this import
 
 class WorkoutWithSets(WorkoutRead):

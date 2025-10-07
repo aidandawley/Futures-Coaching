@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import datetime, date
+
 from typing import List, Optional
 
 from sqlalchemy import String, Integer, Float, DateTime, ForeignKey
@@ -26,6 +27,7 @@ class WorkoutSession(Base):
     title: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     notes: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    scheduled_for: Mapped[date | None] = mapped_column(nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="workouts")
     sets: Mapped[List["ExerciseSet"]] = relationship(
