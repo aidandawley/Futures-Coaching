@@ -49,10 +49,31 @@
   border: 1px solid var(--panel-border); border-radius: 10px; padding: 6px 10px; cursor: pointer;
 }
 .legend{ list-style:none; padding:0; margin:8px 0 12px; display:grid; gap:8px; font-size:14px; }
-.dot{ display:inline-block; width:10px; height:10px; border-radius:999px; margin-right:8px; vertical-align:middle; }
-.dot.done{ background:#22c55e; }
-.dot.plan{ background:#0ea5e9; }
-.dot.rest{ background:#f59e0b; }
+.dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  margin-right: 8px;
+  vertical-align: middle;
+  flex: 0 0 auto;
+}
+
+
+.dot.done {
+  background: #22c55e;      
+}
+
+.dot.planned {
+  background: #3b82f6;       
+}
+
+.dot.rest {
+  background: #f59e0b;      
+}
+
+/* optional: outline for visibility on very dark backgrounds */
+.dot { box-shadow: 0 0 0 2px rgba(255,255,255,0.06) inset; }
 .back-link{ display:inline-block; margin-top:8px; color:#9ecdf9; }
 
 /* calendar panel: header fixed, grid scrolls */
@@ -94,6 +115,47 @@
 }
 .day-name{ font-weight:700; }
 .muted{ color: var(--ink-300); }
+
+.calendar-panel .day-cell { 
+  color: #fff;               
+}
+
+/* the big date number */
+.calendar-panel .day-date {
+  color: #fff;
+}
+
+/* titles inside workout cards */
+.calendar-panel .workout-card .title {
+  color: #fff;
+}
+
+/* secondary lines (e.g., "no sets yet", summaries) */
+.calendar-panel .muted {
+  color: rgba(255,255,255,.6);
+}
+
+
+.calendar-panel .day-name {
+  color: rgba(255,255,255,.85);
+  background: transparent;   
+  padding: 0;                
+  border-radius: 0;          
+  box-shadow: none;
+}
+
+
+.calendar-panel .day-cell {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;   
+  outline: none;
+}
+
+
+.calendar-panel .badge {
+  background: #2563eb;
+}
 
 /* workout cards */
 .workout-card{
@@ -383,3 +445,47 @@ html, body { background-color: #0b1220; }
   box-shadow: 0 8px 24px rgba(0,0,0,0.35);
   z-index: 9999;
 }
+
+.day-modal .day-list .workout-card,
+.day-modal .day-list .workout-card .title {
+  color: #fff;
+}
+
+.day-modal .day-list .muted {
+  color: rgba(255,255,255,.7);
+}
+
+/* ensure the card itself stays dark but text is readable */
+.day-modal .day-list .workout-card {
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+}
+
+/* --- form labels & inputs inside the modal --- */
+.day-modal .field label {
+  color: #fff;
+}
+
+/* inputs/textarea/select use a dark background with white text */
+.day-modal .field input,
+.day-modal .field textarea,
+.day-modal .field select {
+  background: #111827;              /* dark slate */
+  border: 1px solid #2a2f3a;
+  color: #fff;
+}
+
+/* placeholder / helper text */
+.day-modal ::placeholder {
+  color: rgba(255,255,255,.5);
+}
+
+/* make the select readable even when unfocused */
+.day-modal .field select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: none;            /* remove native arrow if you style your own */
+}
+
+/* optional: status chip already ok; keep contrast for the pill */
+.chip { color: #fff; }
