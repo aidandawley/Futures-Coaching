@@ -43,7 +43,7 @@ class ExerciseSet(Base):
 
     exercise: Mapped[str] = mapped_column(String(100))
     reps: Mapped[int] = mapped_column(Integer)
-    weight: Mapped[Optional[float]] = mapped_column(Float, nullable=True) 
+    weight: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     rpe: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     workout: Mapped["WorkoutSession"] = relationship(back_populates="sets")

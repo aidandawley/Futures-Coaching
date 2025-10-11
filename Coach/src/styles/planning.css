@@ -367,3 +367,19 @@ html, body { background-color: #0b1220; }
   background: rgba(255,255,255,0.06);
   padding: 8px 10px;
 }
+
+/* toast */
+.toast{
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  backdrop-filter: blur(6px);
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  z-index: 9999;
+}

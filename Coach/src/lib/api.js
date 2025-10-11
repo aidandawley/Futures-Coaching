@@ -42,10 +42,12 @@ export function listWorkoutsOnDay(userId, day) {
 }
 
 
-export function createWorkout({ user_id, title, notes, scheduled_for } = {}) {
+export function createWorkout({ user_id, title, notes, scheduled_for, status } = {}) {
+  const body = { user_id, title, notes, scheduled_for };
+  if (status) body.status = status;   
   return fetchJSON("/workouts/", {
     method: "POST",
-    body: { user_id, title, notes, scheduled_for },
+    body,
   });
 }
 
@@ -86,4 +88,12 @@ export function deleteSet(setId) {
 export function listWorkoutsInRangeWithSets(userId, start, end) {
   const params = new URLSearchParams({ start, end }).toString();
   return fetchJSON(`/workouts/by_user/${userId}/range_with_sets?${params}`);
+}
+
+export function createSetsBulk({ workout_id, exercise, reps, count, weight = null }) {
+  const body = { workout_id, exercise, reps, count };
+  if (weight !== null && weight !== "" && !Number.isNaN(Number(weight))) {
+    body.weight = Number(weight);
+  }
+  return fetchJSON(`/sets/bulk`, { method: "POST", body });
 }

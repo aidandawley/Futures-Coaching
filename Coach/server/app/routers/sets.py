@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from ..db import models
 from ..db.database import get_db
-from ..schemas.set import SetCreate, SetRead, SetUpdate
+from ..schemas.set import SetCreate, SetRead, SetUpdate, SetBulkCreate
 
 
 router = APIRouter(prefix="/sets", tags=["Sets"])
@@ -33,6 +33,13 @@ def list_sets_by_workout(workout_id: int, db: Session = Depends(get_db)):
         .all()
     )
 
+@router.get("/{set_id}", response_model=SetRead)
+def get_set(set_id: int, db: Session = Depends(get_db)):
+    db_set = db.query(models.ExerciseSet).get(set_id)
+    if not db_set:
+        raise HTTPException(status_code=404, detail="Set not found")
+    return db_set  
+
 @router.patch("/{set_id}", response_model=SetRead)
 def update_set(set_id: int, payload: SetUpdate, db: Session = Depends(get_db)):
     db_set = db.query(models.ExerciseSet).get(set_id)
@@ -48,6 +55,7 @@ def update_set(set_id: int, payload: SetUpdate, db: Session = Depends(get_db)):
     return db_set
 
 
+
 @router.delete("/{set_id}", status_code=204)
 def delete_set(set_id: int, db: Session = Depends(get_db)):
     db_set = db.query(models.ExerciseSet).get(set_id)
@@ -57,9 +65,28 @@ def delete_set(set_id: int, db: Session = Depends(get_db)):
     db.commit()
     return  # 204 No Content
 
-@router.get("/{set_id}", response_model=SetRead)
-def get_set(set_id: int, db: Session = Depends(get_db)):
-    db_set = db.query(models.ExerciseSet).get(set_id)
-    if not db_set:
-        raise HTTPException(status_code=404, detail="Set not found")
-    return db_set
+
+@router.post("/bulk", response_model=list[SetRead])
+def create_sets_bulk(payload: SetBulkCreate, db: Session = Depends(get_db)):
+    if payload.count < 1 or payload.count > 100:
+        raise HTTPException(status_code=400, detail="count must be between 1 and 100")
+
+    workout = db.query(models.WorkoutSession).get(payload.workout_id)
+    if not workout:
+        raise HTTPException(status_code=404, detail="Workout not found")
+
+    made = []
+    for _ in range(payload.count):
+        row = models.ExerciseSet(
+            workout_id=payload.workout_id,
+            exercise=payload.exercise,
+            reps=payload.reps,
+            weight=payload.weight,  # may be None
+        )
+        db.add(row)
+        made.append(row)
+
+    db.commit()
+    for r in made:
+        db.refresh(r)
+    return made

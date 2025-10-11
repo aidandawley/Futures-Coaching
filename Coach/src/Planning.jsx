@@ -1,5 +1,5 @@
 // src/Planning.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import "./styles/planning.css";
@@ -11,10 +11,10 @@ import {
   listWorkoutsInRange,
   createWorkout,
   getWorkoutDetail,
-  createSet,
   updateSet,
   deleteSet,
   listSetsByWorkout,
+  createSetsBulk,
 } from "./lib/api";
 
 // --- helpers ---
@@ -35,6 +35,7 @@ function getWeekStart(d) {
   return x;
 }
 
+// small status chip
 function Chip({ status = "planned" }) {
   const label =
     status === "done" ? "Completed" :
@@ -43,14 +44,28 @@ function Chip({ status = "planned" }) {
   return <span className={`chip chip--${status}`}>{label}</span>;
 }
 
+// group sets by exercise+reps+weight
+function groupSets(sets) {
+  const map = new Map();
+  for (const s of sets) {
+    const w = s.weight == null ? "" : String(s.weight);
+    const key = `${s.exercise}|${s.reps}|${w}`;
+    if (!map.has(key)) {
+      map.set(key, { key, exercise: s.exercise, reps: s.reps, weight: s.weight ?? "", ids: [] });
+    }
+    map.get(key).ids.push(s.id);
+  }
+  return Array.from(map.values()).map((g) => ({ ...g, count: g.ids.length }));
+}
+
 export default function Planning() {
   const userId = 1; // todo: real current user
 
-  // week + days
+  // week state
   const [currentWeekStart, setCurrentWeekStart] = useState(getWeekStart(new Date()));
   const [workoutsByDay, setWorkoutsByDay] = useState({}); // { "yyyy-mm-dd": [workout, ...] }
 
-  // day modal
+  // day modal state
   const [selectedDayISO, setSelectedDayISO] = useState(null);
   const [isDayOpen, setIsDayOpen] = useState(false);
 
@@ -61,32 +76,46 @@ export default function Planning() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
 
-  // workout detail panel
+  // workout detail state
   const [selectedWorkout, setSelectedWorkout] = useState(null);
   const [sets, setSets] = useState([]);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState("");
 
-  // add set mini-form
-  const [newSetExercise, setNewSetExercise] = useState("");
-  const [newSetReps, setNewSetReps] = useState("");
-  const [newSetWeight, setNewSetWeight] = useState("");
+  // ui rows = grouped sets you can edit
+  const [rows, setRows] = useState([]); // [{origKey?, exercise, reps, weight, count, ids?, isNew?}]
+  const [dirty, setDirty] = useState(false); // single save control
 
-  // inline edit state per set id
-  const [editRows, setEditRows] = useState({});
+  // tmp inputs for add exercise × sets (not saved until “save changes”)
+  const [newEx, setNewEx] = useState("");
+  const [newReps, setNewReps] = useState("");
+  const [newCount, setNewCount] = useState("1");
+  const [newWeight, setNewWeight] = useState("");
 
-  // load a week’s workouts
+  const [toast, setToast] = useState(null);
+  function pushToast(msg) {
+    setToast(msg);
+    window.clearTimeout(pushToast._t);
+    pushToast._t = window.setTimeout(() => setToast(null), 2000);
+  }
+
+  // load a week (tries sets endpoint, falls back)
   async function loadWeek(weekStart) {
     const startISO = toISODate(weekStart);
     const endISO = toISODate(addDays(weekStart, 6));
     try {
-      const rows = await listWorkoutsInRangeWithSets(userId, startISO, endISO);
+      let rows;
+      try {
+        rows = await listWorkoutsInRangeWithSets(userId, startISO, endISO);
+      } catch {
+        rows = await listWorkoutsInRange(userId, startISO, endISO);
+      }
       const map = {};
       for (const w of rows) {
         const key = w.scheduled_for;
         if (!key) continue;
         if (!map[key]) map[key] = [];
-        map[key].push(w);
+        map[key].push({ ...w, sets: w.sets ?? [] });
       }
       setWorkoutsByDay(map);
     } catch (err) {
@@ -94,23 +123,28 @@ export default function Planning() {
       setWorkoutsByDay({});
     }
   }
-  
 
+  // initial + when week changes
   useEffect(() => {
     loadWeek(currentWeekStart);
   }, [currentWeekStart]);
 
+  // whenever sets load, hydrate grouped editable rows
   useEffect(() => {
-   
-    const next = {};
-    for (const s of sets) {
-      next[s.id] = {
-        exercise: s.exercise ?? "",
-        reps: String(s.reps ?? ""),
-        weight: s.weight ?? "",
-      };
-    }
-    setEditRows(next);
+    const grouped = groupSets(sets).map((g) => ({
+      origKey: g.key,
+      exercise: g.exercise,
+      reps: String(g.reps),
+      weight: g.weight === "" ? "" : String(g.weight),
+      count: String(g.count),
+      ids: g.ids,
+      isNew: false,
+    }));
+    setRows(grouped);
+    
+
+    setDirty(false);
+    pushToast("changes saved");
   }, [sets]);
 
   // week controls
@@ -136,15 +170,14 @@ export default function Planning() {
   }
   function closeDay() {
     setIsDayOpen(false);
-    // also close workout detail if open
     closeWorkoutDetail();
   }
 
-  // add workout
+  // create workout (optimistic insert + open detail)
   async function handleAddWorkout(e) {
     e.preventDefault();
     if (!selectedDayISO) return;
-  
+
     setSaving(true);
     setSaveError("");
     try {
@@ -155,37 +188,45 @@ export default function Planning() {
         scheduled_for: selectedDayISO,
         status: newStatus,
       });
-  
-      // refresh the week so the new workout shows up in the list
-      await loadWeek(currentWeekStart);
-  
-      // immediately open the workout detail so you can add/edit sets
+      pushToast("workout saved");
+
+      // optimistic calendar update
+      setWorkoutsByDay((prev) => {
+        const next = { ...prev };
+        const day = selectedDayISO;
+        const list = next[day] ? [...next[day]] : [];
+        list.push({ ...created, sets: created.sets ?? [] });
+        next[day] = list;
+        return next;
+      });
+
+      loadWeek(currentWeekStart);
       await openWorkoutDetail(created.id);
-  
-      // reset the add form
+
       setNewTitle("");
       setNewNotes("");
       setNewStatus("planned");
     } catch (err) {
       console.error(err);
       setSaveError(err.message || "Failed to save workout");
+      pushToast(err.message || "failed to save");
+
     } finally {
       setSaving(false);
     }
   }
-  
+
   // open/close workout detail
   async function openWorkoutDetail(workoutId) {
     setLoadingDetail(true);
     setDetailError("");
     try {
-      const detail = await getWorkoutDetail(workoutId); // returns WorkoutWithSets
+      const detail = await getWorkoutDetail(workoutId);
       setSelectedWorkout(detail);
       const initialSets = Array.isArray(detail.sets)
         ? detail.sets
         : await listSetsByWorkout(workoutId);
       setSets(initialSets ?? []);
-      setEditRows({});
     } catch (err) {
       console.error(err);
       setDetailError(err.message || "Failed to load workout");
@@ -196,100 +237,142 @@ export default function Planning() {
   function closeWorkoutDetail() {
     setSelectedWorkout(null);
     setSets([]);
-    setEditRows({});
-    setNewSetExercise("");
-    setNewSetReps("");
-    setNewSetWeight("");
+    setRows([]);
+    setDirty(false);
+    setNewEx("");
+    setNewReps("");
+    setNewWeight("");
+    setNewCount("1");
   }
 
-  // create set
-  async function handleAddSet(e) {
+  // add a logical exercise row (not saved yet)
+  function addLogicalRow(e) {
     e.preventDefault();
     if (!selectedWorkout) return;
-    try {
-      const row = await createSet({
-        workout_id: selectedWorkout.id,
-        exercise: newSetExercise || "Exercise",
-        reps: Number(newSetReps || 0),
-        weight: newSetWeight, // helper will coerce/omit
-      });
-      setSets((prev) => [...prev, row]);
-      setNewSetExercise("");
-      setNewSetReps("");
-      setNewSetWeight("");
-    } catch (err) {
-      alert(err.message || "Failed to add set");
-    }
+    if (!newEx || !newReps || Number.isNaN(Number(newReps))) return;
+
+    const row = {
+      origKey: undefined, // new
+      exercise: newEx,
+      reps: String(Number(newReps)),
+      weight: newWeight === "" ? "" : String(Number(newWeight)),
+      count: String(Math.max(1, Number(newCount || 1))),
+      ids: [],
+      isNew: true,
+    };
+    setRows((prev) => [...prev, row]);
+    setDirty(true);
+    setNewEx("");
+    setNewReps("");
+    setNewWeight("");
+    setNewCount("1");
   }
 
-  // inline edit controls
-  function startEdit(setRow) {
-    setEditRows((m) => ({
-      ...m,
-      [setRow.id]: {
-        exercise: setRow.exercise,
-        reps: String(setRow.reps),
-        weight: setRow.weight ?? "",
-      },
-    }));
-  }
-  function cancelEdit(setId) {
-    setEditRows((m) => {
-      const n = { ...m };
-      delete n[setId];
-      return n;
+  // remove a logical row (set count to 0)
+  function removeLogicalRow(idx) {
+    setRows((prev) => {
+      const next = [...prev];
+      // if it had ids, set count to 0 so we delete; if new, drop it
+      if (next[idx].ids && next[idx].ids.length > 0) {
+        next[idx] = { ...next[idx], count: "0" };
+      } else {
+        next.splice(idx, 1);
+      }
+      return next;
     });
+    setDirty(true);
   }
-  async function saveEdit(setId) {
-    const staged = editRows[setId];
-    if (!staged) return;
+
+  // single save: apply all row edits to backend
+  async function saveAllChanges() {
+    if (!selectedWorkout) return;
     try {
-      const updated = await updateSet(setId, {
-        exercise: staged.exercise,
-        reps: staged.reps,
-        weight: staged.weight === "" ? null : staged.weight,
-      });
-      setSets((prev) => prev.map((s) => (s.id === setId ? updated : s)));
-      cancelEdit(setId);
+      setSaving(true);
+
+      // current grouped state from db (source of truth for ids)
+      const originalGroups = groupSets(sets);
+      const byKey = new Map(originalGroups.map((g) => [g.key, g]));
+
+      // go through edited rows
+      for (const r of rows) {
+        const targetCount = Math.max(0, Number(r.count || 0));
+        const payload = {
+          exercise: r.exercise.trim() || "Exercise",
+          reps: Number(r.reps || 0),
+          weight: r.weight === "" ? null : Number(r.weight),
+        };
+
+        // existing group?
+        if (r.origKey && byKey.has(r.origKey)) {
+          const og = byKey.get(r.origKey);
+
+          // if fields changed, update all sets in this group
+          const changed =
+            payload.exercise !== og.exercise ||
+            payload.reps !== og.reps ||
+            (payload.weight ?? null) !== (og.weight === "" ? null : og.weight);
+
+          if (changed) {
+            for (const id of og.ids) {
+              await updateSet(id, payload);
+            }
+          }
+
+          // adjust count up/down
+          const delta = targetCount - og.count;
+          if (delta > 0) {
+            await createSetsBulk({
+              workout_id: selectedWorkout.id,
+              exercise: payload.exercise,
+              reps: payload.reps,
+              count: delta,
+              weight: payload.weight,
+            });
+          } else if (delta < 0) {
+            // delete extra sets from this group
+            const toDelete = og.ids.slice(0, Math.abs(delta));
+            for (const id of toDelete) {
+              await deleteSet(id);
+            }
+          }
+        } else {
+          // new logical row: create n sets
+          if (targetCount > 0) {
+            await createSetsBulk({
+              workout_id: selectedWorkout.id,
+              exercise: payload.exercise,
+              reps: payload.reps,
+              count: targetCount,
+              weight: payload.weight,
+            });
+          }
+        }
+      }
+
+      // also handle groups that disappeared (not present in rows anymore)
+      const remainingKeys = new Set(rows.filter((r) => r.origKey).map((r) => r.origKey));
+      for (const og of originalGroups) {
+        if (!remainingKeys.has(og.key)) {
+          // delete all sets in this original group
+          for (const id of og.ids) {
+            await deleteSet(id);
+          }
+        }
+      }
+
+      // reload workout + calendar
+      await openWorkoutDetail(selectedWorkout.id);
+      await loadWeek(currentWeekStart);
+      setDirty(false);
     } catch (err) {
-      alert(err.message || "Failed to update set");
-    }
-  }
-  async function removeSet(setId) {
-    if (!confirm("Delete this set?")) return;
-    try {
-      await deleteSet(setId);
-      setSets((prev) => prev.filter((s) => s.id !== setId));
-    } catch (err) {
-      alert(err.message || "Failed to delete set");
+      alert(err.message || "failed to save changes");
+      pushToast(err.message || "save failed");
+
+    } finally {
+      setSaving(false);
     }
   }
 
-  async function saveRow(setId) {
-    const staged = editRows[setId];
-    if (!staged) return;
-    try {
-      const updated = await updateSet(setId, {
-        exercise: staged.exercise,
-        reps: staged.reps,
-        weight: staged.weight === "" ? null : staged.weight,
-      });
-      // reflect in both sets and editRows
-      setSets((prev) => prev.map((s) => (s.id === setId ? updated : s)));
-      setEditRows((m) => ({
-        ...m,
-        [setId]: {
-          exercise: updated.exercise ?? "",
-          reps: String(updated.reps ?? ""),
-          weight: updated.weight ?? "",
-        },
-      }));
-    } catch (err) {
-      alert(err.message || "Failed to update set");
-    }
-  }
-
-  
   return (
     <main className="planning-page">
       <div className="planning-grid">
@@ -319,87 +402,89 @@ export default function Planning() {
           <Link className="back-link" to="/home">← Back to Home</Link>
         </aside>
 
+        {/* middle — weekly calendar */}
         <section className="panel-dark calendar-panel">
-  <header className="panel-head">
-    <h2>Weekly Calendar</h2>
-    <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-      <button type="button" className="ghost" onClick={prevWeek}>←</button>
-      <div className="muted">{weekLabel}</div>
-      <button type="button" className="ghost" onClick={nextWeek}>→</button>
-    </div>
-  </header>
-
-  <p className="muted" style={{ marginTop: 8 }}>
-    Loaded days this week: {Object.keys(workoutsByDay).length}
-  </p>
-
-  <div className="calendar-grid week-grid">
-    {weekDays.map((d, i) => {
-      const iso = toISODate(d);
-      const items = workoutsByDay[iso] || [];
-      return (
-        <button
-          key={iso}
-          type="button"
-          className="day-cell"
-          onClick={() => openDay(iso)}
-          title={items.length ? `${items.length} workout(s)` : ""}
-        >
-          <div className="day-head" style={{ justifyContent: "space-between" }}>
-            <div>
-              <div className="day-name muted">{dayNames[i]}</div>
-              <div className="day-date">{d.getDate()}</div>
+          <header className="panel-head">
+            <h2>Weekly Calendar</h2>
+            <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+              <button type="button" className="ghost" onClick={prevWeek}>←</button>
+              <div className="muted">{weekLabel}</div>
+              <button type="button" className="ghost" onClick={nextWeek}>→</button>
             </div>
-            {items.length > 0 && <span className="badge">{items.length}</span>}
-          </div>
+          </header>
 
-          {/* preview: title + exercise summaries */}
-          {items.length > 0 && (
-            <ul className="workout-preview">
-              {items.slice(0, 3).map((w) => {
-                const counts = {};
-                (w.sets || []).forEach((s) => {
-                  const name = s.exercise || "Exercise";
-                  counts[name] = (counts[name] || 0) + 1;
-                });
-                const entries = Object.entries(counts);
-                const show = entries.slice(0, 3);
-                const more = Math.max(entries.length - show.length, 0);
+          <p className="muted" style={{ marginTop: 8 }}>
+            Loaded days this week: {Object.keys(workoutsByDay).length}
+          </p>
 
-                return (
-                  <li key={w.id} className="workout-card" style={{ cursor: "pointer" }}>
-                    <div className="row">
-                      <div className="title">{w.title || "Workout"}</div>
-                      <span style={{ marginLeft: "auto" }} />
-                      <Chip status={w.status || "planned"} />
+          <div className="calendar-grid week-grid">
+            {weekDays.map((d, i) => {
+              const iso = toISODate(d);
+              const items = workoutsByDay[iso] || [];
+              return (
+                <button
+                  key={iso}
+                  type="button"
+                  className="day-cell"
+                  onClick={() => openDay(iso)}
+                  title={items.length ? `${items.length} workout(s)` : ""}
+                >
+                  <div className="day-head" style={{ justifyContent: "space-between" }}>
+                    <div>
+                      <div className="day-name muted">{dayNames[i]}</div>
+                      <div className="day-date">{d.getDate()}</div>
                     </div>
+                    {items.length > 0 && <span className="badge">{items.length}</span>}
+                  </div>
 
-                    {show.length > 0 ? (
-                      <div className="w-summary">
-                        {show.map(([ex, c], idx) => (
-                          <div key={idx} className="w-summary__line">
-                            <span className="w-ex">{ex}</span>: <span className="w-sets">{c} set{c > 1 ? "s" : ""}</span>
-                          </div>
-                        ))}
-                        {more > 0 && <div className="w-summary__more">+{more} more</div>}
-                      </div>
-                    ) : (
-                      <div className="muted" style={{ fontSize: 12 }}>no sets yet</div>
-                    )}
-                  </li>
-                );
-              })}
-              {items.length > 3 && (
-                <li className="more muted">+{items.length - 3} more workout(s)</li>
-              )}
-            </ul>
-          )}
-        </button>
-      );
-    })}
-  </div>
-</section>
+                  {/* preview: title + exercise summaries */}
+                  {items.length > 0 && (
+                    <ul className="workout-preview">
+                      {items.slice(0, 3).map((w) => {
+                        const counts = {};
+                        (w.sets || []).forEach((s) => {
+                          const name = s.exercise || "Exercise";
+                          counts[name] = (counts[name] || 0) + 1;
+                        });
+                        const entries = Object.entries(counts);
+                        const show = entries.slice(0, 3);
+                        const more = Math.max(entries.length - show.length, 0);
 
+                        return (
+                          <li key={w.id} className="workout-card" style={{ cursor: "pointer" }}>
+                            <div className="row">
+                              <div className="title">{w.title || "Workout"}</div>
+                              <span style={{ marginLeft: "auto" }} />
+                              <Chip status={w.status || "planned"} />
+                            </div>
+
+                            {show.length > 0 ? (
+                              <div className="w-summary">
+                                {show.map(([ex, c], idx) => (
+                                  <div key={idx} className="w-summary__line">
+                                    <span className="w-ex">{ex}</span>: <span className="w-sets">{c} set{c > 1 ? "s" : ""}</span>
+                                  </div>
+                                ))}
+                                {more > 0 && <div className="w-summary__more">+{more} more</div>}
+                              </div>
+                            ) : (
+                              <div className="muted" style={{ fontSize: 12 }}>no sets yet</div>
+                            )}
+                          </li>
+                        );
+                      })}
+                      {items.length > 3 && (
+                        <li className="more muted">+{items.length - 3} more workout(s)</li>
+                      )}
+                    </ul>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+         
+
+        </section>
 
         {/* right — ai coach */}
         <aside className="panel-dark coach-panel">
@@ -443,7 +528,7 @@ export default function Planning() {
                           className="workout-card"
                           onClick={() => openWorkoutDetail(w.id)}
                           style={{ width: "100%", textAlign: "left" }}
-                          title="Open workout detail"
+                          title="open workout detail"
                         >
                           <div className="row">
                             <div className="title">{w.title || "Workout"}</div>
@@ -473,7 +558,7 @@ export default function Planning() {
                     rows={3}
                     value={newNotes}
                     onChange={(e) => setNewNotes(e.target.value)}
-                    placeholder="Optional notes…"
+                    placeholder="optional notes…"
                   />
                 </div>
                 <div className="field">
@@ -496,16 +581,27 @@ export default function Planning() {
         </div>
       )}
 
-      {/* workout detail modal (opens on workout click) */}
+      {/* workout detail modal */}
       {isDayOpen && selectedWorkout && (
         <div className="day-modal workout-detail">
           <div className="day-modal__backdrop" onClick={closeWorkoutDetail} />
-          <div className="day-modal__card" style={{ maxWidth: 720 }}>
+          <div className="day-modal__card" style={{ maxWidth: 820 }}>
             <header className="day-modal__head">
               <h3>
                 {selectedWorkout.title || "Workout"} — {selectedWorkout.scheduled_for || "unscheduled"}
               </h3>
-              <button type="button" className="ghost" onClick={closeWorkoutDetail}>✕</button>
+              <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn--blue"
+                  onClick={saveAllChanges}
+                  disabled={saving || !dirty}
+                  title={dirty ? "save all changes" : "no changes"}
+                >
+                  {saving ? "Saving…" : "Save changes"}
+                </button>
+                <button type="button" className="ghost" onClick={closeWorkoutDetail}>✕</button>
+              </div>
             </header>
 
             <div className="day-modal__body">
@@ -515,65 +611,60 @@ export default function Planning() {
                 <p className="error">{detailError}</p>
               ) : (
                 <>
-                  {/* sets list */}
-                  {sets.length === 0 ? (
-  <p className="muted">No sets yet. Add your first set below.</p>
-) : (
-  <div className="sets-editor">
-    {sets.map((s) => {
-      const row = editRows[s.id] ?? { exercise: "", reps: "", weight: "" };
-      return (
-        <div key={s.id} className="set-row">
-          <input
-            type="text"
-            className="field-input"
-            placeholder="Exercise"
-            value={row.exercise}
-            onChange={(e) =>
-              setEditRows((m) => ({ ...m, [s.id]: { ...m[s.id], exercise: e.target.value } }))
-            }
-          />
-          <input
-            type="number"
-            className="field-input"
-            placeholder="Reps"
-            value={row.reps}
-            onChange={(e) =>
-              setEditRows((m) => ({ ...m, [s.id]: { ...m[s.id], reps: e.target.value } }))
-            }
-          />
-          <input
-            type="number"
-            className="field-input"
-            placeholder="Weight (optional)"
-            value={row.weight}
-            onChange={(e) =>
-              setEditRows((m) => ({ ...m, [s.id]: { ...m[s.id], weight: e.target.value } }))
-            }
-          />
-          <div className="set-row__actions">
-            <button type="button" className="btn btn--blue" onClick={() => saveRow(s.id)}>
-              Save
-            </button>
-            <button type="button" className="ghost" onClick={() => removeSet(s.id)}>
-              Delete
-            </button>
-          </div>
-        </div>
-      );
-    })}
-  </div>
-)}
+                  {/* grouped rows editor */}
+                  {rows.length === 0 ? (
+                    <p className="muted">no exercises yet. add one below.</p>
+                  ) : (
+                    <div style={{ display: "grid", gap: 10 }}>
+                      {rows.map((r, idx) => (
+                        <div key={idx} className="workout-card" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          <input
+                            type="text"
+                            className="field-input"
+                            placeholder="Exercise"
+                            value={r.exercise}
+                            onChange={(e) => { setRows((prev) => { const n = [...prev]; n[idx] = { ...n[idx], exercise: e.target.value }; return n; }); setDirty(true); }}
+                            style={{ minWidth: 220 }}
+                          />
+                          <input
+                            type="number"
+                            className="field-input"
+                            placeholder="Reps"
+                            value={r.reps}
+                            onChange={(e) => { setRows((prev) => { const n = [...prev]; n[idx] = { ...n[idx], reps: e.target.value }; return n; }); setDirty(true); }}
+                            style={{ width: 120 }}
+                          />
+                          <input
+                            type="number"
+                            className="field-input"
+                            placeholder="Weight (optional)"
+                            value={r.weight}
+                            onChange={(e) => { setRows((prev) => { const n = [...prev]; n[idx] = { ...n[idx], weight: e.target.value }; return n; }); setDirty(true); }}
+                            style={{ width: 160 }}
+                          />
+                          <input
+                            type="number"
+                            className="field-input"
+                            placeholder="Sets"
+                            min={0}
+                            value={r.count}
+                            onChange={(e) => { setRows((prev) => { const n = [...prev]; n[idx] = { ...n[idx], count: e.target.value }; return n; }); setDirty(true); }}
+                            style={{ width: 110 }}
+                          />
+                          <button type="button" className="ghost" onClick={() => removeLogicalRow(idx)}>Delete</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
-
-                  {/* add set */}
-                  <form onSubmit={handleAddSet} className="add-form" style={{ marginTop: 14 }}>
+                  {/* add logical exercise × sets (queued until save) */}
+                  <form onSubmit={addLogicalRow} className="add-form" style={{ marginTop: 16 }}>
                     <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
                       <input
                         type="text"
-                        placeholder="Exercise (e.g., Lat Pulldown)"
-                        value={newSetExercise}
-                        onChange={(e) => setNewSetExercise(e.target.value)}
+                        placeholder="Exercise (e.g., Bench Press)"
+                        value={newEx}
+                        onChange={(e) => setNewEx(e.target.value)}
                         className="field-input"
                         required
                         style={{ minWidth: 220 }}
@@ -581,22 +672,34 @@ export default function Planning() {
                       <input
                         type="number"
                         placeholder="Reps"
-                        value={newSetReps}
-                        onChange={(e) => setNewSetReps(e.target.value)}
+                        value={newReps}
+                        onChange={(e) => setNewReps(e.target.value)}
                         className="field-input"
                         required
                         style={{ width: 120 }}
                       />
                       <input
                         type="number"
+                        placeholder="Sets"
+                        value={newCount}
+                        onChange={(e) => setNewCount(e.target.value)}
+                        className="field-input"
+                        required
+                        min={1}
+                        style={{ width: 120 }}
+                      />
+                      <input
+                        type="number"
                         placeholder="Weight (optional)"
-                        value={newSetWeight}
-                        onChange={(e) => setNewSetWeight(e.target.value)}
+                        value={newWeight}
+                        onChange={(e) => setNewWeight(e.target.value)}
                         className="field-input"
                         style={{ width: 160 }}
                       />
                       <span style={{ marginLeft: "auto" }} />
-                      <button type="submit" className="btn btn--blue">+ Add Set</button>
+                      <button type="submit" className="btn btn--blue" onClick={() => setDirty(true)}>
+                        + Add Exercise × Sets
+                      </button>
                     </div>
                   </form>
                 </>
@@ -605,6 +708,7 @@ export default function Planning() {
           </div>
         </div>
       )}
+      {toast && <div className="toast">{toast}</div>}
     </main>
   );
 }
