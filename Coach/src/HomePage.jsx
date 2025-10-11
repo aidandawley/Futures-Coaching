@@ -56,17 +56,12 @@ export default function HomePage() {
           Welcome — today is <strong>MM/DD/YYYY, HH:MM</strong>
         </p>
 
-        <p className="welcome-mini">
-        {workoutCount === null ? "Loading workouts…" : `You have ${workoutCount} workout(s).`}
-        </p>
+        
 
         {/* temporary status line to verify backend connection */}
         <p className="welcome-mini">{status}</p>
 
-        <button className="tile" type="button" onClick={handleAddWorkout}>
-          <h2>Add Workout ➕</h2>
-          <p>Quick test add (user 1)</p>
-        </button>
+       
 
 
         <section className="tiles">
