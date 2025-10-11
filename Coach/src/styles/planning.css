@@ -324,3 +324,46 @@ html, body { background-color: #0b1220; }
 .w-ex { font-weight: 600; opacity: .95; }
 .w-sets { opacity: .9; }
 .w-summary__more { opacity: .85; }
+
+/* force form text white */
+.planning-page input,
+.planning-page textarea,
+.planning-page select {
+  color: #ffffff;
+}
+
+/* nicer placeholder on dark bg */
+.planning-page input::placeholder,
+.planning-page textarea::placeholder {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+/* bottom sets editor layout */
+.sets-editor {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 8px;
+}
+.set-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) 120px 160px auto;
+  gap: 8px;
+  align-items: center;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 8px;
+}
+.set-row__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* input styling matches existing theme */
+.field-input {
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.06);
+  padding: 8px 10px;
+}

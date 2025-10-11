@@ -100,6 +100,19 @@ export default function Planning() {
     loadWeek(currentWeekStart);
   }, [currentWeekStart]);
 
+  useEffect(() => {
+   
+    const next = {};
+    for (const s of sets) {
+      next[s.id] = {
+        exercise: s.exercise ?? "",
+        reps: String(s.reps ?? ""),
+        weight: s.weight ?? "",
+      };
+    }
+    setEditRows(next);
+  }, [sets]);
+
   // week controls
   function prevWeek() { setCurrentWeekStart(addDays(currentWeekStart, -7)); }
   function nextWeek() { setCurrentWeekStart(addDays(currentWeekStart, 7)); }
@@ -252,6 +265,31 @@ export default function Planning() {
     }
   }
 
+  async function saveRow(setId) {
+    const staged = editRows[setId];
+    if (!staged) return;
+    try {
+      const updated = await updateSet(setId, {
+        exercise: staged.exercise,
+        reps: staged.reps,
+        weight: staged.weight === "" ? null : staged.weight,
+      });
+      // reflect in both sets and editRows
+      setSets((prev) => prev.map((s) => (s.id === setId ? updated : s)));
+      setEditRows((m) => ({
+        ...m,
+        [setId]: {
+          exercise: updated.exercise ?? "",
+          reps: String(updated.reps ?? ""),
+          weight: updated.weight ?? "",
+        },
+      }));
+    } catch (err) {
+      alert(err.message || "Failed to update set");
+    }
+  }
+
+  
   return (
     <main className="planning-page">
       <div className="planning-grid">
@@ -479,66 +517,54 @@ export default function Planning() {
                 <>
                   {/* sets list */}
                   {sets.length === 0 ? (
-                    <p className="muted">No sets yet. Add your first set below.</p>
-                  ) : (
-                    <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>
-                      {sets.map((s) => {
-                        const editing = editRows[s.id];
-                        return (
-                          <li key={s.id} className="workout-card">
-                            {!editing ? (
-                              <div className="row" style={{ gap: 12 }}>
-                                <div style={{ fontWeight: 700 }}>{s.exercise}</div>
-                                <div className="muted">reps: {s.reps}</div>
-                                <div className="muted">
-                                  weight: {s.weight == null ? <em>—</em> : s.weight}
-                                </div>
-                                <span style={{ marginLeft: "auto" }} />
-                                <button type="button" className="ghost" onClick={() => startEdit(s)}>Edit</button>
-                                <button type="button" className="ghost" onClick={() => removeSet(s.id)}>Delete</button>
-                              </div>
-                            ) : (
-                              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                                <input
-                                  type="text"
-                                  value={editing.exercise}
-                                  onChange={(e) =>
-                                    setEditRows((m) => ({ ...m, [s.id]: { ...m[s.id], exercise: e.target.value } }))
-                                  }
-                                  placeholder="Exercise"
-                                  className="field-input"
-                                  style={{ minWidth: 160 }}
-                                />
-                                <input
-                                  type="number"
-                                  value={editing.reps}
-                                  onChange={(e) =>
-                                    setEditRows((m) => ({ ...m, [s.id]: { ...m[s.id], reps: e.target.value } }))
-                                  }
-                                  placeholder="Reps"
-                                  className="field-input"
-                                  style={{ width: 100 }}
-                                />
-                                <input
-                                  type="number"
-                                  value={editing.weight}
-                                  onChange={(e) =>
-                                    setEditRows((m) => ({ ...m, [s.id]: { ...m[s.id], weight: e.target.value } }))
-                                  }
-                                  placeholder="Weight (optional)"
-                                  className="field-input"
-                                  style={{ width: 160 }}
-                                />
-                                <span style={{ marginLeft: "auto" }} />
-                                <button type="button" className="btn btn--blue" onClick={() => saveEdit(s.id)}>Save</button>
-                                <button type="button" className="ghost" onClick={() => cancelEdit(s.id)}>Cancel</button>
-                              </div>
-                            )}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
+  <p className="muted">No sets yet. Add your first set below.</p>
+) : (
+  <div className="sets-editor">
+    {sets.map((s) => {
+      const row = editRows[s.id] ?? { exercise: "", reps: "", weight: "" };
+      return (
+        <div key={s.id} className="set-row">
+          <input
+            type="text"
+            className="field-input"
+            placeholder="Exercise"
+            value={row.exercise}
+            onChange={(e) =>
+              setEditRows((m) => ({ ...m, [s.id]: { ...m[s.id], exercise: e.target.value } }))
+            }
+          />
+          <input
+            type="number"
+            className="field-input"
+            placeholder="Reps"
+            value={row.reps}
+            onChange={(e) =>
+              setEditRows((m) => ({ ...m, [s.id]: { ...m[s.id], reps: e.target.value } }))
+            }
+          />
+          <input
+            type="number"
+            className="field-input"
+            placeholder="Weight (optional)"
+            value={row.weight}
+            onChange={(e) =>
+              setEditRows((m) => ({ ...m, [s.id]: { ...m[s.id], weight: e.target.value } }))
+            }
+          />
+          <div className="set-row__actions">
+            <button type="button" className="btn btn--blue" onClick={() => saveRow(s.id)}>
+              Save
+            </button>
+            <button type="button" className="ghost" onClick={() => removeSet(s.id)}>
+              Delete
+            </button>
+          </div>
+        </div>
+      );
+    })}
+  </div>
+)}
+
 
                   {/* add set */}
                   <form onSubmit={handleAddSet} className="add-form" style={{ marginTop: 14 }}>
