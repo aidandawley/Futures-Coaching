@@ -24,3 +24,7 @@ app.include_router(sets.router)
 @app.get("/")
 def read_root():
     return {"message": "FastAPI backend is running"}
+
+from .core.config import settings
+print("AI key present?", bool(settings.GEMINI_API_KEY))
+print("AI model:", settings.AI_MODEL, "mock:", settings.AI_MOCK)
