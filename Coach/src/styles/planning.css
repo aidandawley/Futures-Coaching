@@ -318,3 +318,9 @@ html, body { background-color: #0b1220; }
   color: inherit;
   padding: 8px 10px;
 }
+
+.w-summary { display: grid; gap: 4px; margin-top: 6px; font-size: 12px; }
+.w-summary__line { display: flex; gap: 6px; align-items: baseline; }
+.w-ex { font-weight: 600; opacity: .95; }
+.w-sets { opacity: .9; }
+.w-summary__more { opacity: .85; }

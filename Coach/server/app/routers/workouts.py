@@ -82,3 +82,20 @@ def list_workouts_on_day(
         .order_by(models.WorkoutSession.started_at.asc())
         .all()
     )
+
+@router.get("/by_user/{user_id}/range_with_sets", response_model=list[WorkoutWithSets])
+def list_workouts_in_range_with_sets(
+    user_id: int,
+    start: date = Query(..., description="YYYY-MM-DD"),
+    end: date = Query(..., description="YYYY-MM-DD"),
+    db: Session = Depends(get_db),
+):
+    return (
+        db.query(models.WorkoutSession)
+        .options(joinedload(models.WorkoutSession.sets))
+        .filter(models.WorkoutSession.user_id == user_id)
+        .filter(models.WorkoutSession.scheduled_for >= start)
+        .filter(models.WorkoutSession.scheduled_for <= end)
+        .order_by(models.WorkoutSession.scheduled_for.asc())
+        .all()
+    )

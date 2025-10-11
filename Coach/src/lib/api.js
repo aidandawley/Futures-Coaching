@@ -82,3 +82,8 @@ export function updateSet(setId, { exercise, reps, weight }) {
 export function deleteSet(setId) {
   return fetchJSON(`/sets/${setId}`, { method: "DELETE" });
 }
+
+export function listWorkoutsInRangeWithSets(userId, start, end) {
+  const params = new URLSearchParams({ start, end }).toString();
+  return fetchJSON(`/workouts/by_user/${userId}/range_with_sets?${params}`);
+}

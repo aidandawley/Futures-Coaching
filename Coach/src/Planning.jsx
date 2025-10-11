@@ -7,6 +7,7 @@ import coachImg from "./assets/Coach.png";
 
 // api helpers
 import {
+  listWorkoutsInRangeWithSets,
   listWorkoutsInRange,
   createWorkout,
   getWorkoutDetail,
@@ -79,7 +80,7 @@ export default function Planning() {
     const startISO = toISODate(weekStart);
     const endISO = toISODate(addDays(weekStart, 6));
     try {
-      const rows = await listWorkoutsInRange(userId, startISO, endISO);
+      const rows = await listWorkoutsInRangeWithSets(userId, startISO, endISO);
       const map = {};
       for (const w of rows) {
         const key = w.scheduled_for;
@@ -93,6 +94,7 @@ export default function Planning() {
       setWorkoutsByDay({});
     }
   }
+  
 
   useEffect(() => {
     loadWeek(currentWeekStart);
@@ -129,17 +131,25 @@ export default function Planning() {
   async function handleAddWorkout(e) {
     e.preventDefault();
     if (!selectedDayISO) return;
+  
     setSaving(true);
     setSaveError("");
     try {
-      await createWorkout({
+      const created = await createWorkout({
         user_id: userId,
         title: newTitle || "Workout",
         notes: newNotes || "",
         scheduled_for: selectedDayISO,
         status: newStatus,
       });
+  
+      // refresh the week so the new workout shows up in the list
       await loadWeek(currentWeekStart);
+  
+      // immediately open the workout detail so you can add/edit sets
+      await openWorkoutDetail(created.id);
+  
+      // reset the add form
       setNewTitle("");
       setNewNotes("");
       setNewStatus("planned");
@@ -150,7 +160,7 @@ export default function Planning() {
       setSaving(false);
     }
   }
-
+  
   // open/close workout detail
   async function openWorkoutDetail(workoutId) {
     setLoadingDetail(true);
@@ -271,62 +281,87 @@ export default function Planning() {
           <Link className="back-link" to="/home">← Back to Home</Link>
         </aside>
 
-        {/* middle — weekly calendar */}
         <section className="panel-dark calendar-panel">
-          <header className="panel-head">
-            <h2>Weekly Calendar</h2>
-            <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-              <button type="button" className="ghost" onClick={prevWeek}>←</button>
-              <div className="muted">{weekLabel}</div>
-              <button type="button" className="ghost" onClick={nextWeek}>→</button>
+  <header className="panel-head">
+    <h2>Weekly Calendar</h2>
+    <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+      <button type="button" className="ghost" onClick={prevWeek}>←</button>
+      <div className="muted">{weekLabel}</div>
+      <button type="button" className="ghost" onClick={nextWeek}>→</button>
+    </div>
+  </header>
+
+  <p className="muted" style={{ marginTop: 8 }}>
+    Loaded days this week: {Object.keys(workoutsByDay).length}
+  </p>
+
+  <div className="calendar-grid week-grid">
+    {weekDays.map((d, i) => {
+      const iso = toISODate(d);
+      const items = workoutsByDay[iso] || [];
+      return (
+        <button
+          key={iso}
+          type="button"
+          className="day-cell"
+          onClick={() => openDay(iso)}
+          title={items.length ? `${items.length} workout(s)` : ""}
+        >
+          <div className="day-head" style={{ justifyContent: "space-between" }}>
+            <div>
+              <div className="day-name muted">{dayNames[i]}</div>
+              <div className="day-date">{d.getDate()}</div>
             </div>
-          </header>
-
-          <p className="muted" style={{ marginTop: 8 }}>
-            Loaded days this week: {Object.keys(workoutsByDay).length}
-          </p>
-
-          <div className="calendar-grid week-grid">
-            {weekDays.map((d, i) => {
-              const iso = toISODate(d);
-              const items = workoutsByDay[iso] || [];
-              return (
-                <button
-                  key={iso}
-                  type="button"
-                  className="day-cell"
-                  onClick={() => openDay(iso)}
-                  title={items.length ? `${items.length} workout(s)` : ""}
-                >
-                  <div className="day-head" style={{ justifyContent: "space-between" }}>
-                    <div>
-                      <div className="day-name muted">{dayNames[i]}</div>
-                      <div className="day-date">{d.getDate()}</div>
-                    </div>
-                    {items.length > 0 && <span className="badge">{items.length}</span>}
-                  </div>
-
-                  {items.length > 0 && (
-                    <>
-                      <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
-                        {items[0].title || "Workout"}
-                        {items.length > 1 ? ` +${items.length - 1} more` : ""}
-                      </div>
-                      <div className="chips">
-                        {items.slice(0, 3).map((w) => (
-                          <Chip key={w.id} status={w.status || "planned"} />
-                        ))}
-                        {items.length > 3 && (
-                          <span className="chip chip--more">+{items.length - 3}</span>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </button>
-              );
-            })}
+            {items.length > 0 && <span className="badge">{items.length}</span>}
           </div>
-        </section>
+
+          {/* preview: title + exercise summaries */}
+          {items.length > 0 && (
+            <ul className="workout-preview">
+              {items.slice(0, 3).map((w) => {
+                const counts = {};
+                (w.sets || []).forEach((s) => {
+                  const name = s.exercise || "Exercise";
+                  counts[name] = (counts[name] || 0) + 1;
+                });
+                const entries = Object.entries(counts);
+                const show = entries.slice(0, 3);
+                const more = Math.max(entries.length - show.length, 0);
+
+                return (
+                  <li key={w.id} className="workout-card" style={{ cursor: "pointer" }}>
+                    <div className="row">
+                      <div className="title">{w.title || "Workout"}</div>
+                      <span style={{ marginLeft: "auto" }} />
+                      <Chip status={w.status || "planned"} />
+                    </div>
+
+                    {show.length > 0 ? (
+                      <div className="w-summary">
+                        {show.map(([ex, c], idx) => (
+                          <div key={idx} className="w-summary__line">
+                            <span className="w-ex">{ex}</span>: <span className="w-sets">{c} set{c > 1 ? "s" : ""}</span>
+                          </div>
+                        ))}
+                        {more > 0 && <div className="w-summary__more">+{more} more</div>}
+                      </div>
+                    ) : (
+                      <div className="muted" style={{ fontSize: 12 }}>no sets yet</div>
+                    )}
+                  </li>
+                );
+              })}
+              {items.length > 3 && (
+                <li className="more muted">+{items.length - 3} more workout(s)</li>
+              )}
+            </ul>
+          )}
+        </button>
+      );
+    })}
+  </div>
+</section>
+
 
         {/* right — ai coach */}
         <aside className="panel-dark coach-panel">
