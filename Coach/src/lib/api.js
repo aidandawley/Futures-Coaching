@@ -41,7 +41,7 @@ export function listWorkoutsOnDay(userId, day) {
   return fetchJSON(`/workouts/by_user/${userId}/on/${day}`);
 }
 
-// ✅ Single, unified creator (matches your FastAPI schema)
+
 export function createWorkout({ user_id, title, notes, scheduled_for } = {}) {
   return fetchJSON("/workouts/", {
     method: "POST",
