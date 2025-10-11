@@ -48,3 +48,37 @@ export function createWorkout({ user_id, title, notes, scheduled_for } = {}) {
     body: { user_id, title, notes, scheduled_for },
   });
 }
+
+export function getWorkoutDetail(workoutId) {
+  return fetchJSON(`/workouts/${workoutId}/detail`);
+}
+
+// --- sets CRUD ---
+export function listSetsByWorkout(workoutId) {
+  return fetchJSON(`/sets/by_workout/${workoutId}`);
+}
+
+export function createSet({ workout_id, exercise, reps, weight = null }) {
+  // weight is optional; send only if provided
+  const body = { workout_id, exercise, reps };
+  if (weight !== null && weight !== "" && !Number.isNaN(Number(weight))) {
+    body.weight = Number(weight);
+  }
+  return fetchJSON(`/sets/`, { method: "POST", body });
+}
+
+export function updateSet(setId, { exercise, reps, weight }) {
+  const body = {};
+  if (exercise !== undefined) body.exercise = exercise;
+  if (reps !== undefined) body.reps = Number(reps);
+  if (weight !== undefined) {
+    // allow clearing weight to null
+    if (weight === "" || weight === null) body.weight = null;
+    else body.weight = Number(weight);
+  }
+  return fetchJSON(`/sets/${setId}`, { method: "PATCH", body });
+}
+
+export function deleteSet(setId) {
+  return fetchJSON(`/sets/${setId}`, { method: "DELETE" });
+}

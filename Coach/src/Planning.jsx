@@ -4,9 +4,17 @@ import { Link } from "react-router-dom";
 
 import "./styles/planning.css";
 import coachImg from "./assets/Coach.png";
-// If this file is at src/Planning.jsx and api is at src/lib/api.js,
-// this path is correct:
-import { listWorkoutsInRange, createWorkout } from "./lib/api";
+
+// api helpers
+import {
+  listWorkoutsInRange,
+  createWorkout,
+  getWorkoutDetail,
+  createSet,
+  updateSet,
+  deleteSet,
+  listSetsByWorkout,
+} from "./lib/api";
 
 // --- helpers ---
 function toISODate(d) {
@@ -17,10 +25,10 @@ function addDays(d, n) {
   x.setDate(x.getDate() + n);
   return x;
 }
-// Monday as week start
+// monday as week start
 function getWeekStart(d) {
   const x = new Date(d);
-  const dow = (x.getDay() + 6) % 7; // Monday=0
+  const dow = (x.getDay() + 6) % 7; // mon=0
   x.setDate(x.getDate() - dow);
   x.setHours(0, 0, 0, 0);
   return x;
@@ -35,22 +43,38 @@ function Chip({ status = "planned" }) {
 }
 
 export default function Planning() {
-  const userId = 1; // TODO: real current user
+  const userId = 1; // todo: real current user
 
+  // week + days
   const [currentWeekStart, setCurrentWeekStart] = useState(getWeekStart(new Date()));
-  const [workoutsByDay, setWorkoutsByDay] = useState({}); // { "YYYY-MM-DD": [workout, ...] }
+  const [workoutsByDay, setWorkoutsByDay] = useState({}); // { "yyyy-mm-dd": [workout, ...] }
 
-  // Day panel state
+  // day modal
   const [selectedDayISO, setSelectedDayISO] = useState(null);
   const [isDayOpen, setIsDayOpen] = useState(false);
 
-  // Add form state
+  // add workout form
   const [newTitle, setNewTitle] = useState("");
   const [newNotes, setNewNotes] = useState("");
   const [newStatus, setNewStatus] = useState("planned");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
 
+  // workout detail panel
+  const [selectedWorkout, setSelectedWorkout] = useState(null);
+  const [sets, setSets] = useState([]);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [detailError, setDetailError] = useState("");
+
+  // add set mini-form
+  const [newSetExercise, setNewSetExercise] = useState("");
+  const [newSetReps, setNewSetReps] = useState("");
+  const [newSetWeight, setNewSetWeight] = useState("");
+
+  // inline edit state per set id
+  const [editRows, setEditRows] = useState({});
+
+  // load a week’s workouts
   async function loadWeek(weekStart) {
     const startISO = toISODate(weekStart);
     const endISO = toISODate(addDays(weekStart, 6));
@@ -60,7 +84,7 @@ export default function Planning() {
       for (const w of rows) {
         const key = w.scheduled_for;
         if (!key) continue;
-        if (!map[key]) map[key] = [];   // ✅ avoid `||=`
+        if (!map[key]) map[key] = [];
         map[key].push(w);
       }
       setWorkoutsByDay(map);
@@ -83,10 +107,10 @@ export default function Planning() {
   const weekLabel = `${currentWeekStart.toLocaleDateString(undefined, {
     month: "short", day: "numeric",
   })} – ${weekEnd.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
-
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i));
   const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+  // open/close day modal
   function openDay(iso) {
     setSelectedDayISO(iso);
     setIsDayOpen(true);
@@ -95,12 +119,16 @@ export default function Planning() {
     setNewStatus("planned");
     setSaveError("");
   }
-  function closeDay() { setIsDayOpen(false); }
+  function closeDay() {
+    setIsDayOpen(false);
+    // also close workout detail if open
+    closeWorkoutDetail();
+  }
 
+  // add workout
   async function handleAddWorkout(e) {
     e.preventDefault();
     if (!selectedDayISO) return;
-
     setSaving(true);
     setSaveError("");
     try {
@@ -111,7 +139,7 @@ export default function Planning() {
         scheduled_for: selectedDayISO,
         status: newStatus,
       });
-      await loadWeek(currentWeekStart);   // refresh
+      await loadWeek(currentWeekStart);
       setNewTitle("");
       setNewNotes("");
       setNewStatus("planned");
@@ -123,10 +151,101 @@ export default function Planning() {
     }
   }
 
+  // open/close workout detail
+  async function openWorkoutDetail(workoutId) {
+    setLoadingDetail(true);
+    setDetailError("");
+    try {
+      const detail = await getWorkoutDetail(workoutId); // returns WorkoutWithSets
+      setSelectedWorkout(detail);
+      const initialSets = Array.isArray(detail.sets)
+        ? detail.sets
+        : await listSetsByWorkout(workoutId);
+      setSets(initialSets ?? []);
+      setEditRows({});
+    } catch (err) {
+      console.error(err);
+      setDetailError(err.message || "Failed to load workout");
+    } finally {
+      setLoadingDetail(false);
+    }
+  }
+  function closeWorkoutDetail() {
+    setSelectedWorkout(null);
+    setSets([]);
+    setEditRows({});
+    setNewSetExercise("");
+    setNewSetReps("");
+    setNewSetWeight("");
+  }
+
+  // create set
+  async function handleAddSet(e) {
+    e.preventDefault();
+    if (!selectedWorkout) return;
+    try {
+      const row = await createSet({
+        workout_id: selectedWorkout.id,
+        exercise: newSetExercise || "Exercise",
+        reps: Number(newSetReps || 0),
+        weight: newSetWeight, // helper will coerce/omit
+      });
+      setSets((prev) => [...prev, row]);
+      setNewSetExercise("");
+      setNewSetReps("");
+      setNewSetWeight("");
+    } catch (err) {
+      alert(err.message || "Failed to add set");
+    }
+  }
+
+  // inline edit controls
+  function startEdit(setRow) {
+    setEditRows((m) => ({
+      ...m,
+      [setRow.id]: {
+        exercise: setRow.exercise,
+        reps: String(setRow.reps),
+        weight: setRow.weight ?? "",
+      },
+    }));
+  }
+  function cancelEdit(setId) {
+    setEditRows((m) => {
+      const n = { ...m };
+      delete n[setId];
+      return n;
+    });
+  }
+  async function saveEdit(setId) {
+    const staged = editRows[setId];
+    if (!staged) return;
+    try {
+      const updated = await updateSet(setId, {
+        exercise: staged.exercise,
+        reps: staged.reps,
+        weight: staged.weight === "" ? null : staged.weight,
+      });
+      setSets((prev) => prev.map((s) => (s.id === setId ? updated : s)));
+      cancelEdit(setId);
+    } catch (err) {
+      alert(err.message || "Failed to update set");
+    }
+  }
+  async function removeSet(setId) {
+    if (!confirm("Delete this set?")) return;
+    try {
+      await deleteSet(setId);
+      setSets((prev) => prev.filter((s) => s.id !== setId));
+    } catch (err) {
+      alert(err.message || "Failed to delete set");
+    }
+  }
+
   return (
     <main className="planning-page">
       <div className="planning-grid">
-        {/* LEFT — week controls */}
+        {/* left — week controls */}
         <aside className="panel-dark week-panel">
           <header className="panel-head">
             <h2>Week</h2>
@@ -145,14 +264,14 @@ export default function Planning() {
 
           <ul className="legend">
             <li><span className="dot done" /> Completed</li>
-            <li><span className="dot planned" /> Planned</li>{/* ✅ match CSS class */}
+            <li><span className="dot planned" /> Planned</li>
             <li><span className="dot rest" /> Recovery/Rest</li>
           </ul>
 
           <Link className="back-link" to="/home">← Back to Home</Link>
         </aside>
 
-        {/* MIDDLE — weekly calendar */}
+        {/* middle — weekly calendar */}
         <section className="panel-dark calendar-panel">
           <header className="panel-head">
             <h2>Weekly Calendar</h2>
@@ -209,7 +328,7 @@ export default function Planning() {
           </div>
         </section>
 
-        {/* RIGHT — AI Coach */}
+        {/* right — ai coach */}
         <aside className="panel-dark coach-panel">
           <header className="panel-head"><h2>AI Coach</h2></header>
           <div className="coach-avatar has-image">
@@ -221,14 +340,14 @@ export default function Planning() {
             <div className="msg user">Felt strong! Bench moved well.</div>
             <div className="msg coach">Great! We’ll add 2.5–5 lb next session.</div>
           </div>
-          <form className="chat-input" onSubmit={(e)=>e.preventDefault()}>
+          <form className="chat-input" onSubmit={(e) => e.preventDefault()}>
             <input type="text" placeholder="Ask your coach…" />
             <button type="submit" className="btn btn--blue">Send</button>
           </form>
         </aside>
       </div>
 
-      {/* DAY MODAL */}
+      {/* day modal */}
       {isDayOpen && (
         <div className="day-modal">
           <div className="day-modal__backdrop" onClick={closeDay} />
@@ -246,11 +365,19 @@ export default function Planning() {
                   <ul className="day-list">
                     {items.map((w) => (
                       <li key={w.id}>
-                        <div className="row">
-                          <div className="title">{w.title || "Workout"}</div>
-                          <Chip status={w.status || "planned"} />
-                        </div>
-                        {w.notes ? <div className="muted">{w.notes}</div> : null}
+                        <button
+                          type="button"
+                          className="workout-card"
+                          onClick={() => openWorkoutDetail(w.id)}
+                          style={{ width: "100%", textAlign: "left" }}
+                          title="Open workout detail"
+                        >
+                          <div className="row">
+                            <div className="title">{w.title || "Workout"}</div>
+                            <Chip status={w.status || "planned"} />
+                          </div>
+                          {w.notes ? <div className="muted">{w.notes}</div> : null}
+                        </button>
                       </li>
                     ))}
                   </ul>
@@ -291,6 +418,128 @@ export default function Planning() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* workout detail modal (opens on workout click) */}
+      {isDayOpen && selectedWorkout && (
+        <div className="day-modal workout-detail">
+          <div className="day-modal__backdrop" onClick={closeWorkoutDetail} />
+          <div className="day-modal__card" style={{ maxWidth: 720 }}>
+            <header className="day-modal__head">
+              <h3>
+                {selectedWorkout.title || "Workout"} — {selectedWorkout.scheduled_for || "unscheduled"}
+              </h3>
+              <button type="button" className="ghost" onClick={closeWorkoutDetail}>✕</button>
+            </header>
+
+            <div className="day-modal__body">
+              {loadingDetail ? (
+                <p className="muted">Loading…</p>
+              ) : detailError ? (
+                <p className="error">{detailError}</p>
+              ) : (
+                <>
+                  {/* sets list */}
+                  {sets.length === 0 ? (
+                    <p className="muted">No sets yet. Add your first set below.</p>
+                  ) : (
+                    <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>
+                      {sets.map((s) => {
+                        const editing = editRows[s.id];
+                        return (
+                          <li key={s.id} className="workout-card">
+                            {!editing ? (
+                              <div className="row" style={{ gap: 12 }}>
+                                <div style={{ fontWeight: 700 }}>{s.exercise}</div>
+                                <div className="muted">reps: {s.reps}</div>
+                                <div className="muted">
+                                  weight: {s.weight == null ? <em>—</em> : s.weight}
+                                </div>
+                                <span style={{ marginLeft: "auto" }} />
+                                <button type="button" className="ghost" onClick={() => startEdit(s)}>Edit</button>
+                                <button type="button" className="ghost" onClick={() => removeSet(s.id)}>Delete</button>
+                              </div>
+                            ) : (
+                              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                                <input
+                                  type="text"
+                                  value={editing.exercise}
+                                  onChange={(e) =>
+                                    setEditRows((m) => ({ ...m, [s.id]: { ...m[s.id], exercise: e.target.value } }))
+                                  }
+                                  placeholder="Exercise"
+                                  className="field-input"
+                                  style={{ minWidth: 160 }}
+                                />
+                                <input
+                                  type="number"
+                                  value={editing.reps}
+                                  onChange={(e) =>
+                                    setEditRows((m) => ({ ...m, [s.id]: { ...m[s.id], reps: e.target.value } }))
+                                  }
+                                  placeholder="Reps"
+                                  className="field-input"
+                                  style={{ width: 100 }}
+                                />
+                                <input
+                                  type="number"
+                                  value={editing.weight}
+                                  onChange={(e) =>
+                                    setEditRows((m) => ({ ...m, [s.id]: { ...m[s.id], weight: e.target.value } }))
+                                  }
+                                  placeholder="Weight (optional)"
+                                  className="field-input"
+                                  style={{ width: 160 }}
+                                />
+                                <span style={{ marginLeft: "auto" }} />
+                                <button type="button" className="btn btn--blue" onClick={() => saveEdit(s.id)}>Save</button>
+                                <button type="button" className="ghost" onClick={() => cancelEdit(s.id)}>Cancel</button>
+                              </div>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+
+                  {/* add set */}
+                  <form onSubmit={handleAddSet} className="add-form" style={{ marginTop: 14 }}>
+                    <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                      <input
+                        type="text"
+                        placeholder="Exercise (e.g., Lat Pulldown)"
+                        value={newSetExercise}
+                        onChange={(e) => setNewSetExercise(e.target.value)}
+                        className="field-input"
+                        required
+                        style={{ minWidth: 220 }}
+                      />
+                      <input
+                        type="number"
+                        placeholder="Reps"
+                        value={newSetReps}
+                        onChange={(e) => setNewSetReps(e.target.value)}
+                        className="field-input"
+                        required
+                        style={{ width: 120 }}
+                      />
+                      <input
+                        type="number"
+                        placeholder="Weight (optional)"
+                        value={newSetWeight}
+                        onChange={(e) => setNewSetWeight(e.target.value)}
+                        className="field-input"
+                        style={{ width: 160 }}
+                      />
+                      <span style={{ marginLeft: "auto" }} />
+                      <button type="submit" className="btn btn--blue">+ Add Set</button>
+                    </div>
+                  </form>
+                </>
+              )}
             </div>
           </div>
         </div>

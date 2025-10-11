@@ -56,3 +56,10 @@ def delete_set(set_id: int, db: Session = Depends(get_db)):
     db.delete(db_set)
     db.commit()
     return  # 204 No Content
+
+@router.get("/{set_id}", response_model=SetRead)
+def get_set(set_id: int, db: Session = Depends(get_db)):
+    db_set = db.query(models.ExerciseSet).get(set_id)
+    if not db_set:
+        raise HTTPException(status_code=404, detail="Set not found")
+    return db_set

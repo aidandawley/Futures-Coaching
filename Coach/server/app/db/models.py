@@ -41,10 +41,9 @@ class ExerciseSet(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     workout_id: Mapped[int] = mapped_column(ForeignKey("workout_sessions.id"), index=True)
 
-    # Basic exercise info (we can normalize later)
-    exercise: Mapped[str] = mapped_column(String(100))        # e.g., “Bench Press”
+    exercise: Mapped[str] = mapped_column(String(100))
     reps: Mapped[int] = mapped_column(Integer)
-    weight: Mapped[float] = mapped_column(Float)              # store as kg or lb (frontend can label)
+    weight: Mapped[Optional[float]] = mapped_column(Float, nullable=True) 
     rpe: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     workout: Mapped["WorkoutSession"] = relationship(back_populates="sets")

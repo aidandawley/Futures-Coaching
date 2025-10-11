@@ -310,3 +310,11 @@ html, body { background-color: #0b1220; }
 .chip--more    { background: #334155; color: #e2e8f0; }  /* slate  */
 
 .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+.field-input {
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+  color: inherit;
+  padding: 8px 10px;
+}

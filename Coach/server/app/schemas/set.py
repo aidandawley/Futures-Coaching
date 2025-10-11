@@ -4,7 +4,7 @@ from pydantic import BaseModel
 class SetBase(BaseModel):
     exercise: str
     reps: int
-    weight: float
+    weight: Optional[float] = None  
 
 class SetCreate(SetBase):
     workout_id: int
