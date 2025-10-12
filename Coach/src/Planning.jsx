@@ -15,6 +15,7 @@ import {
   deleteSet,
   listSetsByWorkout,
   createSetsBulk,
+  aiChat,
 } from "./lib/api";
 
 // --- helpers ---
@@ -91,6 +92,14 @@ export default function Planning() {
   const [newReps, setNewReps] = useState("");
   const [newCount, setNewCount] = useState("1");
   const [newWeight, setNewWeight] = useState("");
+
+    // ai coach chat state
+  const [chat, setChat] = useState([
+   { role: "assistant", content: "hey — i’m your ai coach. what’s your goal this week?" }
+  ]);
+
+  const [chatInput, setChatInput] = useState("");
+  const [chatSending, setChatSending] = useState(false);
 
   const [toast, setToast] = useState(null);
   function pushToast(msg) {
@@ -373,6 +382,29 @@ export default function Planning() {
     }
   }
 
+  // send one chat message to backend
+  async function handleCoachSend(e) {
+    e.preventDefault();
+    const text = chatInput.trim();
+    if (!text || chatSending) return;
+
+    // optimistic user bubble
+    const next = [...chat, { role: "user", content: text }];
+    setChat(next);
+    setChatInput("");
+
+    try {
+      setChatSending(true);
+      // call backend (mock/real) using the running transcript
+      const reply = await aiChat(next, userId);
+     setChat((prev) => [...prev, reply]);
+    } catch (err) {
+      pushToast(err.message || "coach error");
+    } finally {
+      setChatSending(false);
+    }
+  }
+
   return (
     <main className="planning-page">
       <div className="planning-grid">
@@ -493,15 +525,26 @@ export default function Planning() {
             <img src={coachImg} alt="AI Coach avatar" />
             <span className="muted">Upload coach image</span>
           </div>
-          <div className="chat-log">
-            <div className="msg coach">How was your chest workout?</div>
-            <div className="msg user">Felt strong! Bench moved well.</div>
-            <div className="msg coach">Great! We’ll add 2.5–5 lb next session.</div>
+          +          <div className="chat-log">
+            {chat.map((m, i) => (
+              <div key={i} className={`msg ${m.role === "user" ? "user" : "coach"}`}>
+                {m.content}
+              </div>
+            ))}
           </div>
-          <form className="chat-input" onSubmit={(e) => e.preventDefault()}>
-            <input type="text" placeholder="Ask your coach…" />
-            <button type="submit" className="btn btn--blue">Send</button>
+          <form className="chat-input" onSubmit={handleCoachSend}>
+            <input
+              type="text"
+              placeholder="Ask your coach…"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              disabled={chatSending}
+            />
+            <button type="submit" className="btn btn--blue" disabled={chatSending}>
+              {chatSending ? "sending…" : "send"}
+            </button>
           </form>
+         
         </aside>
       </div>
 
