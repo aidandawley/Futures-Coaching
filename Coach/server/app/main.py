@@ -3,7 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .db.database import engine
 from .db import models
-from .routers import users, workouts, sets
+from .routers import users, workouts, sets, ai
+
 
 app = FastAPI()
 
@@ -20,6 +21,7 @@ models.Base.metadata.create_all(bind=engine)
 app.include_router(users.router)
 app.include_router(workouts.router)
 app.include_router(sets.router)
+app.include_router(ai.router)
 
 @app.get("/")
 def read_root():

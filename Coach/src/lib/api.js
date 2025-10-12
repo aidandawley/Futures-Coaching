@@ -97,3 +97,16 @@ export function createSetsBulk({ workout_id, exercise, reps, count, weight = nul
   }
   return fetchJSON(`/sets/bulk`, { method: "POST", body });
 }
+
+/**
+ * chat with the ai
+ * @param {Array<{role: 'system'|'user'|'assistant', content: string}>} messages
+ * @param {number} [userId]  optional
+ * @returns {Promise<{role: 'assistant', content: string}>}
+ */
+export function aiChat(messages, userId) {
+  return fetchJSON("/ai/chat", {
+    method: "POST",
+    body: { messages, user_id: userId ?? 1 },
+  });
+}
