@@ -422,7 +422,10 @@ export default function Planning() {
     }
   }
 
-  async function queueProposal(p) {
+
+
+  async function queueAndApply(p) {
+    // 1) queue on the server for audit/history
     const items = [{
       user_id: userId,
       intent: p.intent,
@@ -433,15 +436,45 @@ export default function Planning() {
       requires_super_confirmation: p.requires_super_confirmation ?? false,
       dedupe_key: p.dedupe_key ?? null,
     }];
+  
     try {
-      const out = await aiQueueTasks(items);
-      pushToast("Queued for review");
-      setProposals([]);          // optional: clear proposals now
+      await aiQueueTasks(items);
     } catch (e) {
-      pushToast("Failed to queue");
+      pushToast("Queued failed");
+      console.error(e);
+      return;
+    }
+  
+    // 2) apply locally to calendar right away for supported intents
+    try {
+      if (p.intent === "add_workout") {
+        const { date, title, notes } = p.payload || {};
+        if (!date || !title) {
+          pushToast("Invalid add_workout payload");
+        } else {
+          await createWorkout({
+            user_id: userId,
+            title: title || "Workout",
+            notes: notes || "",
+            scheduled_for: date,       // ISO yyyy-mm-dd
+            status: "planned",
+          });
+          // reload calendar so it appears immediately
+          await loadWeek(currentWeekStart);
+          pushToast(`Added "${title}" on ${date}`);
+        }
+      } else {
+        // not yet supported for instant apply — still queued
+        pushToast("Queued (will require manual approval for apply)");
+      }
+    } catch (e) {
+      pushToast("Apply failed");
+      console.error(e);
+    } finally {
+      // clear suggestions either way
+      setProposals([]);
     }
   }
-
 
   return (
     <main className="planning-page">
@@ -591,7 +624,7 @@ export default function Planning() {
                       {JSON.stringify(p.payload, null, 2)}
                     </pre>
                     <div className="row" style={{ marginTop: 8, gap: 8 }}>
-                      <button type="button" className="btn btn--blue" onClick={() => queueProposal(p)}>
+                      <button type="button" className="btn btn--blue" onClick={() => queueAndApply(p)}>
                         Confirm
                       </button>
                       <button type="button" className="ghost" onClick={() => setProposals([])}>
