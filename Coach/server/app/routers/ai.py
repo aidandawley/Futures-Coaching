@@ -341,7 +341,7 @@ async def interpret(req: ChatRequest) -> InterpretResponse:
         assistant_text=f"I can add **{title}** on {parsed_date}. Want me to queue that?",
         proposals=proposals,
     )
-
+    
 @router.post("/tasks/queue", response_model=list[AITaskOut])
 def queue_tasks(items: list[AITaskCreate], db: Session = Depends(get_db)) -> list[AITaskOut]:
     """
