@@ -95,7 +95,7 @@ export default function Planning() {
 
     // ai coach chat state
   const [chat, setChat] = useState([
-   { role: "assistant", content: "hey — i’m your ai coach. what’s your goal this week?" }
+   { role: "assistant", content: "Hey — I’m your AI coach. What’s your goal this week?" }
   ]);
 
   const [chatInput, setChatInput] = useState("");
