@@ -35,3 +35,16 @@ def list_ai_tasks(db: Session, *, user_id: int, status: Optional[str] = None) ->
     if status:
         q = q.filter(models.AITask.status == status)
     return q.order_by(models.AITask.created_at.desc()).all()
+
+def get_ai_task(db: Session, task_id: int) -> models.AITask | None:
+    return db.query(models.AITask).filter(models.AITask.id == task_id).first()
+
+def update_ai_task_status(db: Session, task_id: int, new_status: str) -> models.AITask:
+    t = get_ai_task(db, task_id)
+    if not t:
+        raise ValueError("task not found")
+    t.status = new_status  # 'approved' or 'rejected'
+    db.add(t)
+    db.commit()
+    db.refresh(t)
+    return t
