@@ -15,6 +15,7 @@ import {
   deleteSet,
   listSetsByWorkout,
   createSetsBulk,
+  aiChat,
   aiInterpret,
   aiQueueTasks,
 } from "./lib/api";
@@ -99,7 +100,8 @@ export default function Planning() {
   const [chat, setChat] = useState([
     { role: "assistant", content: "hey! tell me your goal + days/week and i'll help plan." },
   ]); // [{role:'user'|'assistant', content}]
-  const [aiBusy, setAiBusy] = useState(false);
+  const [chatSending, setChatSending] = useState(false);
+
   const [proposals, setProposals] = useState([]); // from /ai/plan/interpret
 
   // updating message
@@ -388,26 +390,35 @@ export default function Planning() {
   async function handleCoachSubmit(e) {
     e.preventDefault();
     const msg = chatInput.trim();
-    if (!msg || aiBusy) return;
-
-    // append user message
-    const next = [...chat, { role: "user", content: msg }];
-    setChat(next);
+    if (!msg || chatSending) return;
+  
+    // append user bubble
+    const nextTranscript = [...chat, { role: "user", content: msg }];
+    setChat(nextTranscript);
     setChatInput("");
-
-    setAiBusy(true);
+    setChatSending(true);
+  
     try {
-      // ask backend to interpret (mock or real)
-      const res = await aiInterpret(toMsgSchema(next), userId);
-      // append assistant text to chat
-      setChat(prev => [...prev, { role: "assistant", content: res.assistant_text }]);
-      // show proposals
-      setProposals(res.proposals || []);
+      // 1) normal chat reply
+      const reply = await aiChat(nextTranscript, userId);
+      setChat(prev => [...prev, reply]); // reply = {role:"assistant", content:"..."}
+  
+      // 2) interpret for proposals (but DO NOT queue automatically)
+      const shouldInterpret = /plan|schedule|add|move|sets|legs|push|pull/i.test(msg);
+      if (shouldInterpret) {
+        const res = await aiInterpret(
+          nextTranscript.map(m => ({ role: m.role, content: m.content })),
+          userId
+        );
+        if (res?.assistant_text) {
+          setChat(prev => [...prev, { role: "assistant", content: res.assistant_text }]);
+        }
+        setProposals(res?.proposals || []);
+      }
     } catch (err) {
-      console.error(err);
-      setChat(prev => [...prev, { role: "assistant", content: "sorry—i couldn’t parse that." }]);
+      pushToast(err.message || "coach error");
     } finally {
-      setAiBusy(false);
+      setChatSending(false);
     }
   }
 
@@ -420,17 +431,17 @@ export default function Planning() {
       confidence: p.confidence ?? 0.7,
       requires_confirmation: p.requires_confirmation ?? true,
       requires_super_confirmation: p.requires_super_confirmation ?? false,
-      dedupe_key: null,
+      dedupe_key: p.dedupe_key ?? null,
     }];
     try {
-      await aiQueueTasks(items);
-      pushToast("Queued! Check pending tasks.");
-      setProposals([]); // clear after queue (optional)
-    } catch (err) {
-      console.error(err);
-      pushToast("Failed to queue suggestion");
+      const out = await aiQueueTasks(items);
+      pushToast("Queued for review");
+      setProposals([]);          // optional: clear proposals now
+    } catch (e) {
+      pushToast("Failed to queue");
     }
   }
+
 
   return (
     <main className="planning-page">
@@ -597,13 +608,13 @@ export default function Planning() {
           <form className="chat-input" onSubmit={handleCoachSubmit}>
             <input
               type="text"
-              placeholder={aiBusy ? "thinking…" : "Ask your coach…"}
+              placeholder={chatSending ? "thinking…" : "Ask your coach…"}
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
-              disabled={aiBusy}
+              disabled={chatSending}
             />
-            <button type="submit" className="btn btn--blue" disabled={aiBusy}>
-              {aiBusy ? "sending…" : "send"}
+            <button type="submit" className="btn btn--blue" disabled={chatSending}>
+            {chatSending ? "sending…" : "send"}
             </button>
           </form>
         </aside>
