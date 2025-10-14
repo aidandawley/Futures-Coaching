@@ -172,34 +172,36 @@ def list_models():
     return {"models": out}
 
 
-# ── Routes: interpret / tasks ──────────────────────────────────────────────────
 @router.post("/plan/interpret", response_model=InterpretResponse)
 async def interpret(req: ChatRequest) -> InterpretResponse:
     """
-    Read the conversation, pull a date/title from the latest user message (with
-    some fallbacks), and return a single 'add_workout' proposal. If we can't
-    find a date, ask a follow-up question and return no proposals.
+    Read the chat transcript, extract a target date + workout title, and return
+    proposals the UI can confirm. We return:
+      1) add_workout (date + title)
+      2) optionally an upsert_sets proposal with suggested sets (NO workout_id yet)
+    The UI will apply the sets right after creating the workout, once it knows the id.
     """
-    # --- gather messages ---
+    # --- Gather user text ------------------------------------------------------
     user_msgs = [m.content for m in req.messages if m.role == "user"]
     full_user_text = " ".join(user_msgs).strip()
     last_user = user_msgs[-1].strip() if user_msgs else ""
     lu_last = last_user.lower()
     lu_full = full_user_text.lower()
 
-    # --- parse date (prefer the last date mentioned anywhere in the chat) ---
+    # --- Utilities -------------------------------------------------------------
     def _safe_date(y: int, m: int, d: int) -> str | None:
         try:
             return date(year=y, month=m, day=d).isoformat()
         except ValueError:
             return None
 
-    def _extract_iso_date_preferring_last(text: str) -> str | None:
-        # quick keywords on the last message (feels conversational)
-        if "tomorrow" in lu_last:
-            return (date.today() + timedelta(days=1)).isoformat()
+    # Prefer the *last* date the user mentioned; otherwise fallback to tomorrow
+    def _extract_iso_date_preferring_last() -> str:
+        # quick keywords (on the last message for conversational feel)
         if "today" in lu_last:
             return date.today().isoformat()
+        if "tomorrow" in lu_last:
+            return (date.today() + timedelta(days=1)).isoformat()
 
         candidates: list[str] = []
 
@@ -210,66 +212,134 @@ async def interpret(req: ChatRequest) -> InterpretResponse:
             if iso:
                 candidates.append(iso)
 
-        # mm-dd-yyyy or mm/dd/yyyy (also accept 2-digit year)
+        # mm-dd-yyyy or mm/dd/yyyy (and support 2-digit year)
         for m in re.finditer(r"\b(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})\b", lu_full):
             mm, dd, yy = m.groups()
             mm, dd = int(mm), int(dd)
             yy = int(yy)
-            if yy < 100:
+            if yy < 100:  # normalize 2-digit years
                 yy += 2000
             iso = _safe_date(yy, mm, dd)
             if iso:
                 candidates.append(iso)
 
-        return candidates[-1] if candidates else None
+        # If nothing matched, default to tomorrow
+        return candidates[-1] if candidates else (date.today() + timedelta(days=1)).isoformat()
 
-    parsed_date = _extract_iso_date_preferring_last(full_user_text)
+    # --- Parse date & title ----------------------------------------------------
+    parsed_date = _extract_iso_date_preferring_last()
 
-    # If still no date, ask a targeted follow-up and return no proposals
-    if not parsed_date:
-        return InterpretResponse(
-            assistant_text="I can queue that. What date should I use? (e.g., 2025-10-16)",
-            proposals=[],
-        )
-
-    # --- pick a title from the last user message ---
+    # Title heuristics — prefer explicit push/pull/legs hints from *last* msg
     title = "Workout"
     if "push" in lu_last:
         title = "Push Day"
     elif "pull" in lu_last:
         title = "Pull Day"
-    elif "legs" in lu_last or "leg" in lu_last:
+    elif "legs" in lu_last or "leg day" in lu_last or re.search(r"\bleg(s)?\b", lu_last):
         title = "Leg Day"
 
-    # --- optional: collect exercise hints into notes ---
-    exercises = []
-    for token in [
-        "bench", "bench press", "squat", "deadlift", "overhead", "ohp",
-        "row", "curl", "press", "incline", "dip", "lateral raise",
-    ]:
-        if token in lu_full:
-            exercises.append("bench press" if token in ("bench", "bench press") else token)
-    notes = ", ".join(sorted(set(exercises)))
+    # Allow “call it … / name it …” patterns to override
+    m = re.search(r"(call it|name it|title it)\s+([^\n.,;]+)", last_user, flags=re.I)
+    if m:
+        custom = m.group(2).strip()
+        if custom:
+            title = custom
 
-    # Build proposal
-    payload = AddWorkoutPayload(
+    # --- Suggest sets (OPTIONAL) ----------------------------------------------
+    # If the user mentions exercises, build sensible defaults for reps/count.
+    CANON = [
+        ("bench press", 5, None, 3),
+        ("incline dumbbell press", 10, None, 3),
+        ("overhead press", 8, None, 3),
+        ("lateral raise", 12, None, 3),
+        ("squat", 5, None, 3),
+        ("deadlift", 5, None, 3),
+        ("barbell row", 8, None, 3),
+        ("dumbbell row", 10, None, 3),
+        ("dip", 8, None, 3),
+        ("curl", 12, None, 3),
+        ("triceps pushdown", 12, None, 3),
+        ("incline press", 8, None, 3),  # catch broader phrasing
+    ]
+
+    picked_sets: list[dict] = []
+
+    # Map a few aliases so looser language still hits
+    aliases = {
+        "bench": "bench press",
+        "ohp": "overhead press",
+        "press": "overhead press",  # if context is push day, this is reasonable
+        "row": "barbell row",
+        "incline": "incline dumbbell press",
+        "pushdowns": "triceps pushdown",
+        "pushdown": "triceps pushdown",
+        "lateral raises": "lateral raise",
+    }
+
+    # Build a normalized search string to match tokens
+    norm = lu_full
+
+    # Collect any canonical names that appear
+    seen = set()
+    for name, reps, weight, count in CANON:
+        if name in norm:
+            seen.add(name)
+
+    # Add by alias
+    for token, canonical in aliases.items():
+        if re.search(rf"\b{re.escape(token)}\b", norm):
+            seen.add(canonical)
+
+    # If no explicit exercises but the user said "push", propose a basic push template
+    if not seen and ("push" in lu_last or "push day" in lu_last):
+        seen.update(["bench press", "overhead press", "lateral raise"])
+
+    # Materialize the set specs in the order of CANON
+    for name, reps, weight, count in CANON:
+        if name in seen:
+            picked_sets.append(
+                {"exercise": name, "reps": reps, "weight": weight, "count": count}
+            )
+
+    # --- Build proposals -------------------------------------------------------
+    add_payload = AddWorkoutPayload(
         date=parsed_date,
         title=title,
-        notes=notes,
+        notes="",  # not abusing notes anymore
     ).model_dump()
 
-    proposal = AIProposal(
+    add_proposal = AIProposal(
         intent="add_workout",
-        payload=payload,
+        payload=add_payload,
         summary=f"Add '{title}' on {parsed_date}.",
         confidence=0.75,
         requires_confirmation=True,
         requires_super_confirmation=False,
     )
 
+    proposals: list[AIProposal] = [add_proposal]
+
+    # If we have suggested sets, include a second proposal (workout_id unknown yet)
+    if picked_sets:
+        upsert_payload = {
+            "workout_id": 0,     # placeholder; client will inject the created id
+            "mode": "append",
+            "sets": picked_sets,
+        }
+        proposals.append(
+            AIProposal(
+                intent="upsert_sets",
+                payload=upsert_payload,
+                summary=f"Add {len(picked_sets)} exercise group(s) to '{title}'.",
+                confidence=0.75,
+                requires_confirmation=True,
+                requires_super_confirmation=False,
+            )
+        )
+
     return InterpretResponse(
         assistant_text=f"I can add **{title}** on {parsed_date}. Want me to queue that?",
-        proposals=[proposal],
+        proposals=proposals,
     )
 
 @router.post("/tasks/queue", response_model=list[AITaskOut])
