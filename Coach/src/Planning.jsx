@@ -1,5 +1,5 @@
 // src/Planning.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import "./styles/planning.css";
@@ -15,7 +15,8 @@ import {
   deleteSet,
   listSetsByWorkout,
   createSetsBulk,
-  aiChat,
+  aiInterpret,
+  aiQueueTasks,
 } from "./lib/api";
 
 // --- helpers ---
@@ -60,7 +61,7 @@ function groupSets(sets) {
 }
 
 export default function Planning() {
-  const userId = 1; // todo: real current user
+  const userId = 1; // TODO: real current user
 
   // week state
   const [currentWeekStart, setCurrentWeekStart] = useState(getWeekStart(new Date()));
@@ -93,14 +94,15 @@ export default function Planning() {
   const [newCount, setNewCount] = useState("1");
   const [newWeight, setNewWeight] = useState("");
 
-    // ai coach chat state
-  const [chat, setChat] = useState([
-   { role: "assistant", content: "Hey — I’m your AI coach. What’s your goal this week?" }
-  ]);
-
+  // ---- AI chat + proposals ----
   const [chatInput, setChatInput] = useState("");
-  const [chatSending, setChatSending] = useState(false);
+  const [chat, setChat] = useState([
+    { role: "assistant", content: "hey! tell me your goal + days/week and i'll help plan." },
+  ]); // [{role:'user'|'assistant', content}]
+  const [aiBusy, setAiBusy] = useState(false);
+  const [proposals, setProposals] = useState([]); // from /ai/plan/interpret
 
+  // updating message
   const [toast, setToast] = useState(null);
   function pushToast(msg) {
     setToast(msg);
@@ -150,10 +152,7 @@ export default function Planning() {
       isNew: false,
     }));
     setRows(grouped);
-    
-
     setDirty(false);
-    pushToast("changes saved");
   }, [sets]);
 
   // week controls
@@ -219,7 +218,6 @@ export default function Planning() {
       console.error(err);
       setSaveError(err.message || "Failed to save workout");
       pushToast(err.message || "failed to save");
-
     } finally {
       setSaving(false);
     }
@@ -373,35 +371,64 @@ export default function Planning() {
       await openWorkoutDetail(selectedWorkout.id);
       await loadWeek(currentWeekStart);
       setDirty(false);
+      pushToast("changes saved");
     } catch (err) {
       alert(err.message || "failed to save changes");
       pushToast(err.message || "save failed");
-
     } finally {
       setSaving(false);
     }
   }
 
-  // send one chat message to backend
-  async function handleCoachSend(e) {
-    e.preventDefault();
-    const text = chatInput.trim();
-    if (!text || chatSending) return;
+  // ---- AI Coach handlers ----
+  function toMsgSchema(list) {
+    return list.map(m => ({ role: m.role, content: m.content }));
+  }
 
-    // optimistic user bubble
-    const next = [...chat, { role: "user", content: text }];
+  async function handleCoachSubmit(e) {
+    e.preventDefault();
+    const msg = chatInput.trim();
+    if (!msg || aiBusy) return;
+
+    // append user message
+    const next = [...chat, { role: "user", content: msg }];
     setChat(next);
     setChatInput("");
 
+    setAiBusy(true);
     try {
-      setChatSending(true);
-      // call backend (mock/real) using the running transcript
-      const reply = await aiChat(next, userId);
-     setChat((prev) => [...prev, reply]);
+      // ask backend to interpret (mock or real)
+      const res = await aiInterpret(toMsgSchema(next), userId);
+      // append assistant text to chat
+      setChat(prev => [...prev, { role: "assistant", content: res.assistant_text }]);
+      // show proposals
+      setProposals(res.proposals || []);
     } catch (err) {
-      pushToast(err.message || "coach error");
+      console.error(err);
+      setChat(prev => [...prev, { role: "assistant", content: "sorry—i couldn’t parse that." }]);
     } finally {
-      setChatSending(false);
+      setAiBusy(false);
+    }
+  }
+
+  async function queueProposal(p) {
+    const items = [{
+      user_id: userId,
+      intent: p.intent,
+      payload: p.payload,
+      summary: p.summary || "",
+      confidence: p.confidence ?? 0.7,
+      requires_confirmation: p.requires_confirmation ?? true,
+      requires_super_confirmation: p.requires_super_confirmation ?? false,
+      dedupe_key: null,
+    }];
+    try {
+      await aiQueueTasks(items);
+      pushToast("Queued! Check pending tasks.");
+      setProposals([]); // clear after queue (optional)
+    } catch (err) {
+      console.error(err);
+      pushToast("Failed to queue suggestion");
     }
   }
 
@@ -514,37 +541,71 @@ export default function Planning() {
               );
             })}
           </div>
-         
-
         </section>
 
         {/* right — ai coach */}
         <aside className="panel-dark coach-panel">
           <header className="panel-head"><h2>AI Coach</h2></header>
+
           <div className="coach-avatar has-image">
             <img src={coachImg} alt="AI Coach avatar" />
             <span className="muted">Upload coach image</span>
           </div>
-          +          <div className="chat-log">
+
+          {/* chat log */}
+          <div className="chat-log">
             {chat.map((m, i) => (
               <div key={i} className={`msg ${m.role === "user" ? "user" : "coach"}`}>
                 {m.content}
               </div>
             ))}
           </div>
-          <form className="chat-input" onSubmit={handleCoachSend}>
+
+          {/* proposals */}
+          {proposals.length > 0 && (
+            <div className="workout-card" style={{ marginBottom: 10 }}>
+              <div className="row">
+                <div className="title">Suggested changes</div>
+              </div>
+              <ul style={{ listStyle: "none", padding: 0, margin: "8px 0 0 0", display: "grid", gap: 8 }}>
+                {proposals.map((p, idx) => (
+                  <li key={idx} className="workout-card" style={{ padding: 10 }}>
+                    <div className="row">
+                      <div className="w-title">{p.summary || p.intent}</div>
+                      <span className="chip chip--planned">
+                        conf {Math.round((p.confidence ?? 0.7) * 100)}%
+                      </span>
+                    </div>
+                    <pre className="muted" style={{ whiteSpace: "pre-wrap", marginTop: 6 }}>
+                      {JSON.stringify(p.payload, null, 2)}
+                    </pre>
+                    <div className="row" style={{ marginTop: 8, gap: 8 }}>
+                      <button type="button" className="btn btn--blue" onClick={() => queueProposal(p)}>
+                        Confirm
+                      </button>
+                      <button type="button" className="ghost" onClick={() => setProposals([])}>
+                        Dismiss
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* chat input */}
+          <form className="chat-input" onSubmit={handleCoachSubmit}>
             <input
               type="text"
-              placeholder="Ask your coach…"
+              placeholder={aiBusy ? "thinking…" : "Ask your coach…"}
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
-              disabled={chatSending}
+              disabled={aiBusy}
             />
-            <button type="submit" className="btn btn--blue" disabled={chatSending}>
-              {chatSending ? "sending…" : "send"}
+            <button type="submit" className="btn btn--blue" disabled={aiBusy}>
+              {aiBusy ? "sending…" : "send"}
             </button>
           </form>
-         
         </aside>
       </div>
 
@@ -751,6 +812,7 @@ export default function Planning() {
           </div>
         </div>
       )}
+
       {toast && <div className="toast">{toast}</div>}
     </main>
   );

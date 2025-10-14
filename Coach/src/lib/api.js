@@ -110,3 +110,31 @@ export function aiChat(messages, userId) {
     body: { messages, user_id: userId ?? 1 },
   });
 }
+
+export function aiInterpret(messages, user_id = 1) {
+  return fetchJSON(`/ai/plan/interpret`, {
+    method: "POST",
+    body: { messages, user_id },
+  });
+}
+
+export function aiQueueTasks(items) {
+  return fetchJSON(`/ai/tasks/queue`, {
+    method: "POST",
+    body: items, // array of tasks
+  });
+}
+
+export function aiListTasks(user_id, status) {
+  const qs = new URLSearchParams({ user_id: String(user_id) });
+  if (status) qs.set("status", status);
+  return fetchJSON(`/ai/tasks?${qs.toString()}`);
+}
+
+export function aiApproveTask(taskId) {
+  return fetchJSON(`/ai/tasks/${taskId}/approve`, { method: "POST" });
+}
+
+export function aiRejectTask(taskId) {
+  return fetchJSON(`/ai/tasks/${taskId}/reject`, { method: "POST" });
+}
