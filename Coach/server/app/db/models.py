@@ -2,7 +2,7 @@ from datetime import datetime, date
 
 from typing import List, Optional
 
-from sqlalchemy import String, Integer, Float, DateTime, ForeignKey, Column, Date
+from sqlalchemy import String, Integer, Float, DateTime, ForeignKey, Column, Date, Boolean, DateTime, JSON, func, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -47,3 +47,28 @@ class ExerciseSet(Base):
     rpe: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     workout: Mapped["WorkoutSession"] = relationship(back_populates="sets")
+
+class AITask(Base):
+    __tablename__ = "ai_tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
+
+    # mirrors AIProposal
+    intent = Column(String(32), nullable=False)  # e.g. add_workout / move_workout ...
+    payload = Column(JSON, nullable=False)
+    summary = Column(String, default="")
+    confidence = Column(Float, default=0.7)
+    requires_confirmation = Column(Boolean, default=True)
+    requires_super_confirmation = Column(Boolean, default=False)
+
+    # queue state machine (no execution yet)
+    status = Column(String(20), nullable=False, default="queued")  # queued|confirmed|executed|canceled
+
+    # optional dedupe key if the UI resubmits the same thing
+    dedupe_key = Column(String(64), nullable=True)
+
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+Index("ix_ai_tasks_user_status", AITask.user_id, AITask.status)

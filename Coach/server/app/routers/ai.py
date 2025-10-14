@@ -3,8 +3,13 @@ from pydantic import BaseModel, Field
 from typing import List, Literal, Optional
 from ..core.config import settings
 from ..services.ai_client import chat_with_gemini
-from ..schemas.ai_actions import AIProposal, InterpretResponse, AddWorkoutPayload
+from ..schemas.ai_actions import AIProposal, InterpretResponse, AddWorkoutPayload, AITaskCreate, AITaskOut
 from datetime import date, timedelta
+from fastapi import Depends
+from sqlalchemy.orm import Session
+from ..db.database import get_db
+from ..db.crud_ai import create_ai_task, list_ai_tasks
+
 
 router = APIRouter(prefix="/ai", tags=["AI"])
 
@@ -95,3 +100,34 @@ async def interpret(req: ChatRequest):
         assistant_text=f"I can add **{title}** on {tomorrow}. Want me to queue that?",
         proposals=[proposal],
     )
+
+
+@router.post("/tasks/queue", response_model=list[AITaskOut])
+def queue_tasks(items: list[AITaskCreate], db: Session = Depends(get_db)):
+    """
+    Accepts one or more proposals and stores them in the queue as AITask rows.
+    No execution yet.
+    """
+    out = []
+    for it in items:
+        t = create_ai_task(
+            db,
+            user_id=it.user_id,
+            intent=it.intent,
+            payload=it.payload,
+            summary=it.summary,
+            confidence=it.confidence,
+            requires_confirmation=it.requires_confirmation,
+            requires_super_confirmation=it.requires_super_confirmation,
+            dedupe_key=it.dedupe_key,
+        )
+        out.append(t)
+    return out
+
+
+@router.get("/tasks", response_model=list[AITaskOut])
+def list_tasks(user_id: int, status: str | None = None, db: Session = Depends(get_db)):
+    """
+    List queued tasks for a user (optionally filter by status).
+    """
+    return list_ai_tasks(db, user_id=user_id, status=status)
