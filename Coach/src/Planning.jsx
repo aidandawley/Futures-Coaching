@@ -424,8 +424,7 @@ export default function Planning() {
 
 
 
-  async function queueAndApply(p) {
-    // 1) queue on the server for audit/history
+  async function queueAndApply(p, idx) {
     const items = [{
       user_id: userId,
       intent: p.intent,
@@ -439,43 +438,15 @@ export default function Planning() {
   
     try {
       await aiQueueTasks(items);
-    } catch (e) {
-      pushToast("Queued failed");
-      console.error(e);
-      return;
-    }
+      pushToast("Queued for review");
   
-    // 2) apply locally to calendar right away for supported intents
-    try {
-      if (p.intent === "add_workout") {
-        const { date, title, notes } = p.payload || {};
-        if (!date || !title) {
-          pushToast("Invalid add_workout payload");
-        } else {
-          await createWorkout({
-            user_id: userId,
-            title: title || "Workout",
-            notes: notes || "",
-            scheduled_for: date,       // ISO yyyy-mm-dd
-            status: "planned",
-          });
-          // reload calendar so it appears immediately
-          await loadWeek(currentWeekStart);
-          pushToast(`Added "${title}" on ${date}`);
-        }
-      } else {
-        // not yet supported for instant apply — still queued
-        pushToast("Queued (will require manual approval for apply)");
-      }
+      // remove only the confirmed proposal, keep the others
+      setProposals(prev => prev.filter((_, i) => i !== idx));
     } catch (e) {
-      pushToast("Apply failed");
-      console.error(e);
-    } finally {
-      // clear suggestions either way
-      setProposals([]);
+      pushToast("Failed to queue");
     }
   }
-
+  
   return (
     <main className="planning-page">
       <div className="planning-grid">
@@ -624,12 +595,27 @@ export default function Planning() {
                       {JSON.stringify(p.payload, null, 2)}
                     </pre>
                     <div className="row" style={{ marginTop: 8, gap: 8 }}>
-                      <button type="button" className="btn btn--blue" onClick={() => queueAndApply(p)}>
-                        Confirm
-                      </button>
-                      <button type="button" className="ghost" onClick={() => setProposals([])}>
-                        Dismiss
-                      </button>
+                    <button
+                      type="button"
+                      className="btn btn--blue"
+                      onClick={() => queueAndApply(p, idx)}
+                      disabled={p.intent === "upsert_sets" && p.payload?.workout_id === 0}
+                      title={
+                        p.intent === "upsert_sets" && p.payload?.workout_id === 0
+                          ? "Approve the workout card first, then add sets"
+                          : ""
+                      }
+                    >
+                      Confirm
+                    </button>
+
+<button
+  type="button"
+  className="ghost"
+  onClick={() => setProposals(prev => prev.filter((_, i) => i !== idx))}  // << remove only this card
+>
+  Dismiss
+</button>
                     </div>
                   </li>
                 ))}
