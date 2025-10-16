@@ -16,8 +16,7 @@ import {
   listSetsByWorkout,
   createSetsBulk,
   aiChat,
-  aiInterpret,
-  aiQueueTasks,
+  aiInterpret
 } from "./lib/api";
 
 // --- helpers ---
@@ -424,26 +423,76 @@ export default function Planning() {
 
 
 
-  async function queueAndApply(p, idx) {
-    const items = [{
-      user_id: userId,
-      intent: p.intent,
-      payload: p.payload,
-      summary: p.summary || "",
-      confidence: p.confidence ?? 0.7,
-      requires_confirmation: p.requires_confirmation ?? true,
-      requires_super_confirmation: p.requires_super_confirmation ?? false,
-      dedupe_key: p.dedupe_key ?? null,
-    }];
-  
+  async function applyNow(p, idx) {
     try {
-      await aiQueueTasks(items);
-      pushToast("Queued for review");
+      if (p.intent === "add_workout") {
+        const { date, title, notes } = p.payload || {};
   
-      // remove only the confirmed proposal, keep the others
+        // create workout on the backend
+        const created = await createWorkout({
+          user_id: userId,
+          title: title || "Workout",
+          notes: notes || "",
+          scheduled_for: date,
+          status: "planned",
+        });
+  
+        // optimistic calendar update
+        setWorkoutsByDay(prev => {
+          const next = { ...prev };
+          const list = next[date] ? [...next[date]] : [];
+          list.push({ ...created, sets: created.sets ?? [] });
+          next[date] = list;
+          return next;
+        });
+  
+        await loadWeek(currentWeekStart);
+        pushToast("Workout added");
+  
+        // keep the other suggestion cards, remove only this one
+        setProposals(prev => prev.filter((_, i) => i !== idx));
+        return;
+      }
+  
+      if (p.intent === "upsert_sets") {
+        const payload = p.payload || {};
+        const workoutId = Number(payload.workout_id || 0);
+  
+        if (!workoutId) {
+          // We need a concrete workout id to add sets.
+          pushToast("Approve the workout card first so I have the workout ID");
+          return;
+        }
+  
+        if (Array.isArray(payload.sets)) {
+          for (const g of payload.sets) {
+            const count = Math.max(1, Number(g.count || 1));
+            await createSetsBulk({
+              workout_id: workoutId,
+              exercise: g.exercise,
+              reps: Number(g.reps || 0),
+              count,
+              weight: g.weight === undefined ? null : g.weight,
+            });
+          }
+        }
+  
+        // refresh the workout detail + week so UI reflects new sets
+        if (selectedWorkout?.id === workoutId) {
+          await openWorkoutDetail(workoutId);
+        }
+        await loadWeek(currentWeekStart);
+        pushToast("Sets added");
+        setProposals(prev => prev.filter((_, i) => i !== idx));
+        return;
+      }
+  
+      // Unknown intent – just remove the card
       setProposals(prev => prev.filter((_, i) => i !== idx));
+      pushToast("Done");
     } catch (e) {
-      pushToast("Failed to queue");
+      console.error(e);
+      pushToast(e.message || "Failed to apply");
     }
   }
   
@@ -598,7 +647,7 @@ export default function Planning() {
                     <button
                       type="button"
                       className="btn btn--blue"
-                      onClick={() => queueAndApply(p, idx)}
+                      onClick={() => applyNow(p, idx)}
                       disabled={p.intent === "upsert_sets" && p.payload?.workout_id === 0}
                       title={
                         p.intent === "upsert_sets" && p.payload?.workout_id === 0
