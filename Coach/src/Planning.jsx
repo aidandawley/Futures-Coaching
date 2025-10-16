@@ -428,7 +428,7 @@ export default function Planning() {
       if (p.intent === "add_workout") {
         const { date, title, notes } = p.payload || {};
   
-        // create workout on the backend
+        // 1) create workout on the backend
         const created = await createWorkout({
           user_id: userId,
           title: title || "Workout",
@@ -437,7 +437,7 @@ export default function Planning() {
           status: "planned",
         });
   
-        // optimistic calendar update
+        // 2) optimistic calendar update
         setWorkoutsByDay(prev => {
           const next = { ...prev };
           const list = next[date] ? [...next[date]] : [];
@@ -446,10 +446,26 @@ export default function Planning() {
           return next;
         });
   
+        // 3) refresh week
         await loadWeek(currentWeekStart);
+  
+        // 4) inject workout_id into any pending upsert_sets cards
+        setProposals(prev =>
+          prev.map(card =>
+            card.intent === "upsert_sets" &&
+            (!card.payload?.workout_id || card.payload.workout_id === 0)
+              ? {
+                  ...card,
+                  payload: { ...card.payload, workout_id: created.id },
+                  summary: card.summary || `Add exercises to '${created.title || "Workout"}'`,
+                }
+              : card
+          )
+        );
+  
         pushToast("Workout added");
   
-        // keep the other suggestion cards, remove only this one
+        // 5) remove only this card
         setProposals(prev => prev.filter((_, i) => i !== idx));
         return;
       }
@@ -459,7 +475,6 @@ export default function Planning() {
         const workoutId = Number(payload.workout_id || 0);
   
         if (!workoutId) {
-          // We need a concrete workout id to add sets.
           pushToast("Approve the workout card first so I have the workout ID");
           return;
         }
@@ -482,6 +497,7 @@ export default function Planning() {
           await openWorkoutDetail(workoutId);
         }
         await loadWeek(currentWeekStart);
+  
         pushToast("Sets added");
         setProposals(prev => prev.filter((_, i) => i !== idx));
         return;
@@ -495,6 +511,7 @@ export default function Planning() {
       pushToast(e.message || "Failed to apply");
     }
   }
+  
   
   return (
     <main className="planning-page">
