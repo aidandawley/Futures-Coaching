@@ -32,23 +32,27 @@ Role = Literal["system", "user", "assistant"]
 SYSTEM_PROMPT = """
 You are an AI strength coach embedded inside a workout planner app.
 
-Your job:
--Say "Yo Whats UP!" at the start of every message
-- Chat naturally and help plan training.
-- When the user asks to change the schedule (add, move, edit, delete workouts, or add sets),
-  you DO NOT edit the calendar yourself. Instead, you suggest a concrete proposal and ask
-  for confirmation. The app will queue and apply changes after the user confirms.
+Tone & brevity
+- Start every message with: Yo Whats UP!
+- Keep replies short (1–3 sentences). If you have enough info, also include a PLAN BLOCK.
 
-Behavior:
-- Keep replies concise (1–3 sentences).
--If the user asks you to create a workout with excercises for them use your better judgment. Prescribe them basic excericises
-that are considered staples in the gym
--List out all workouts the user gives or you want to give with numbers next to them in yourt follow up message. You are making a plan
-- If the user gives a date like 10/16/2025 or 2025-10-16, treat it literally.
-- If information is missing (e.g., no date/title), ask a targeted follow-up question.
-- When you’re ready to propose, say something like:
-  "I can add **Push Day** on 2025-10-16. Want me to queue that?"
-- Never say "I can't add it" or "I'm just a text AI"; proposals are how you cause changes.
+What to output
+- If you can infer name, date, and at least one workout from the user’s message, OUTPUT a PLAN BLOCK.
+- If anything is missing, ask a very short follow-up question AND show the template so the user can fill it in quickly.
+
+PLAN BLOCK format (exact)
+<coach_plan>
+name: <workout title>
+date: YYYY-MM-DD
+workouts:
+1. <exercise> [optional reps/sets like 3x5 or "3 sets of 10"]
+2. <exercise>
+</coach_plan>
+
+Rules
+- If the user says push/pull/legs/upper/lower/full, use that for the name unless they provide a better title.
+- When you can infer everything from natural language, don’t ask—just include the PLAN BLOCK.
+- Never claim you change the calendar. You propose; the app applies after confirmation.
 """
 
 class ChatMessage(BaseModel):
@@ -175,173 +179,258 @@ def list_models():
 @router.post("/plan/interpret", response_model=InterpretResponse)
 async def interpret(req: ChatRequest) -> InterpretResponse:
     """
-    Read the chat transcript, extract a target date + workout title, and return
-    proposals the UI can confirm. We return:
-      1) add_workout (date + title)
-      2) optionally an upsert_sets proposal with suggested sets (NO workout_id yet)
-    The UI will apply the sets right after creating the workout, once it knows the id.
+    Hybrid interpreter:
+    - Prefer a structured <coach_plan>...</coach_plan> block (from user or assistant).
+    - Otherwise, parse natural language to extract name, date, and exercises.
+    - If something essential is missing, ask for the template.
     """
-    # --- Gather user text ------------------------------------------------------
+    # --------------------------
+    # Collect text
+    # --------------------------
+    all_msgs = [m.content for m in req.messages]  # include user and assistant
     user_msgs = [m.content for m in req.messages if m.role == "user"]
-    full_user_text = " ".join(user_msgs).strip()
-    last_user = user_msgs[-1].strip() if user_msgs else ""
+    last_user = user_msgs[-1] if user_msgs else ""
+    full_text = "\n".join(all_msgs)
     lu_last = last_user.lower()
-    lu_full = full_user_text.lower()
+    lu_full = full_text.lower()
 
-    # --- Utilities -------------------------------------------------------------
-    def _safe_date(y: int, m: int, d: int) -> str | None:
+    # --------------------------
+    # Utilities
+    # --------------------------
+    PLAN_TEMPLATE = (
+        "<coach_plan>\n"
+        "name: <workout title>\n"
+        "date: YYYY-MM-DD\n"
+        "workouts:\n"
+        "1. <exercise>\n"
+        "2. <exercise>\n"
+        "</coach_plan>"
+    )
+
+    def _safe_date(y: int, m: int, d: int) -> Optional[str]:
         try:
-            return date(year=y, month=m, day=d).isoformat()
+            return date(y, m, d).isoformat()
         except ValueError:
             return None
 
-    # Prefer the *last* date the user mentioned; otherwise fallback to tomorrow
-    def _extract_iso_date_preferring_last() -> str:
-        # quick keywords (on the last message for conversational feel)
-        if "today" in lu_last:
-            return date.today().isoformat()
-        if "tomorrow" in lu_last:
-            return (date.today() + timedelta(days=1)).isoformat()
+    def _iso_from_any(s: str) -> Optional[str]:
+        s = s.strip()
+        # yyyy-mm-dd or yyyy/mm/dd
+        m = re.match(r"^\s*(\d{4})[-/](\d{2})[-/](\d{2})\s*$", s)
+        if m:
+            y, mm, dd = map(int, m.groups())
+            return _safe_date(y, mm, dd)
+        # mm-dd-yyyy or mm/dd/[yy|yyyy]
+        m = re.match(r"^\s*(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})\s*$", s)
+        if m:
+            mm, dd, yy = m.groups()
+            mm, dd = int(mm), int(dd)
+            yy = int(yy)
+            if yy < 100:
+                yy += 2000
+            return _safe_date(yy, mm, dd)
+        return None
 
-        candidates: list[str] = []
+    def _extract_plan_block(text: str) -> Optional[str]:
+        blocks = re.findall(r"<coach_plan>(.*?)</coach_plan>", text, flags=re.I | re.S)
+        return blocks[-1] if blocks else None
 
+    def _parse_plan_block(block: str) -> dict:
+        s = block.replace("\r\n", "\n")
+
+        m = re.search(r"(?im)^\s*name\s*:\s*(.+)\s*$", s)
+        name = m.group(1).strip() if m else None
+
+        m = re.search(r"(?im)^\s*date\s*:\s*(.+?)\s*$", s)
+        iso_date = _iso_from_any(m.group(1)) if m else None
+
+        items: list[str] = []
+        after = re.split(r"(?im)^\s*workouts\s*:\s*$", s, maxsplit=1)
+        search_region = after[1] if len(after) == 2 else s
+        for line in search_region.split("\n"):
+            mnum = re.match(r"^\s*\d+[\.)]\s*(.+?)\s*$", line)
+            if mnum:
+                txt = mnum.group(1).strip()
+                if txt:
+                    items.append(txt)
+
+        return {"name": name, "iso_date": iso_date, "items": items}
+
+    # Extract structured plan if present (from user or assistant)
+    block = _extract_plan_block(full_text)
+    if block:
+        parsed = _parse_plan_block(block)
+        missing = []
+        if not parsed["name"]:
+            missing.append("name")
+        if not parsed["iso_date"]:
+            missing.append("date")
+        if not parsed["items"]:
+            missing.append("at least one workout")
+        if missing:
+            return InterpretResponse(
+                assistant_text=(
+                    "Looks close! Missing "
+                    + ", ".join(missing)
+                    + ". Please resend using this:\n" + PLAN_TEMPLATE
+                ),
+                proposals=[],
+            )
+
+        title = parsed["name"]
+        iso_date = parsed["iso_date"]
+        items = parsed["items"]
+
+    else:
+        # --------------------------
+        # Parse natural language
+        # --------------------------
+        # Date: prefer last mentioned date in the whole convo
+        iso_date: Optional[str] = None
         # yyyy-mm-dd or yyyy/mm/dd
         for m in re.finditer(r"\b(\d{4})[-/](\d{2})[-/](\d{2})\b", lu_full):
             y, mm, dd = map(int, m.groups())
             iso = _safe_date(y, mm, dd)
             if iso:
-                candidates.append(iso)
-
-        # mm-dd-yyyy or mm/dd/yyyy (and support 2-digit year)
+                iso_date = iso  # last wins
+        # mm-dd-yyyy or mm/dd/[yy|yyyy]
         for m in re.finditer(r"\b(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})\b", lu_full):
             mm, dd, yy = m.groups()
-            mm, dd = int(mm), int(dd)
-            yy = int(yy)
-            if yy < 100:  # normalize 2-digit years
-                yy += 2000
+            mm, dd = int(mm), int(dd); yy = int(yy)
+            if yy < 100: yy += 2000
             iso = _safe_date(yy, mm, dd)
             if iso:
-                candidates.append(iso)
+                iso_date = iso  # last wins
+        if not iso_date and "tomorrow" in lu_last:
+            iso_date = (date.today() + timedelta(days=1)).isoformat()
+        if not iso_date and "today" in lu_last:
+            iso_date = date.today().isoformat()
 
-        # If nothing matched, default to tomorrow
-        return candidates[-1] if candidates else (date.today() + timedelta(days=1)).isoformat()
+        # Title from common splits or “call it …”
+        title = "Workout"
+        if re.search(r"\bpull\b", lu_last) or re.search(r"\bpull\b", lu_full):
+            title = "Pull Day"
+        elif re.search(r"\bpush\b", lu_last) or re.search(r"\bpush\b", lu_full):
+            title = "Push Day"
+        elif re.search(r"\bleg(s)?\b", lu_last) or re.search(r"\bleg(s)?\b", lu_full):
+            title = "Leg Day"
+        elif re.search(r"\bupper\b", lu_full):
+            title = "Upper Day"
+        elif re.search(r"\blower\b", lu_full):
+            title = "Lower Day"
+        m = re.search(r"(call it|name it|title it)\s+([^\n.,;]+)", last_user, flags=re.I)
+        if m:
+            custom = m.group(2).strip()
+            if custom:
+                title = custom
 
-    # --- Parse date & title ----------------------------------------------------
-    parsed_date = _extract_iso_date_preferring_last()
+        # Exercises (canonical names + aliases)
+        CANONICAL = {
+            "bench press": [r"\bbench( press)?\b"],
+            "incline dumbbell press": [r"\bincline( dumbbell)? press\b", r"\bincline\b"],
+            "overhead press": [r"\bohp\b", r"\boverhead press\b", r"\bshoulder press\b"],
+            "lateral raise": [r"\blateral raise(s)?\b"],
+            "barbell row": [r"\bbarbell row(s)?\b", r"\brows?\b"],
+            "dumbbell row": [r"\bdumbbell row(s)?\b"],
+            "lat pulldown": [r"\blat pull ?down(s)?\b", r"\bpull ?down(s)?\b", r"\bpulldown(s)?\b"],
+            "curl": [r"\bcurl(s)?\b", r"\bbiceps?\b"],
+            "triceps pushdown": [r"\b(triceps )?pushdown(s)?\b"],
+            "squat": [r"\bsquat(s)?\b"],
+            "deadlift": [r"\bdeadlift(s)?\b"],
+            "dip": [r"\bdip(s)?\b"],
+        }
 
-    # Title heuristics — prefer explicit push/pull/legs hints from *last* msg
-    title = "Workout"
-    if "push" in lu_last:
-        title = "Push Day"
-    elif "pull" in lu_last:
-        title = "Pull Day"
-    elif "legs" in lu_last or "leg day" in lu_last or re.search(r"\bleg(s)?\b", lu_last):
-        title = "Leg Day"
+        found: list[str] = []
+        for name, pats in CANONICAL.items():
+            for pat in pats:
+                if re.search(pat, lu_full, flags=re.I):
+                    found.append(name); break
 
-    # Allow “call it … / name it …” patterns to override
-    m = re.search(r"(call it|name it|title it)\s+([^\n.,;]+)", last_user, flags=re.I)
-    if m:
-        custom = m.group(2).strip()
-        if custom:
-            title = custom
+        # Defaults if user implied a split
+        if not found and "pull" in lu_full:
+            found = ["lat pulldown", "barbell row", "curl"]
+        if not found and "push" in lu_full:
+            found = ["bench press", "overhead press", "lateral raise"]
+        if not found and re.search(r"\bleg(s)?\b", lu_full):
+            found = ["squat", "deadlift"]
 
-    # --- Suggest sets (OPTIONAL) ----------------------------------------------
-    # If the user mentions exercises, build sensible defaults for reps/count.
-    CANON = [
-        ("bench press", 5, None, 3),
-        ("incline dumbbell press", 10, None, 3),
-        ("overhead press", 8, None, 3),
-        ("lateral raise", 12, None, 3),
-        ("squat", 5, None, 3),
-        ("deadlift", 5, None, 3),
-        ("barbell row", 8, None, 3),
-        ("dumbbell row", 10, None, 3),
-        ("dip", 8, None, 3),
-        ("curl", 12, None, 3),
-        ("triceps pushdown", 12, None, 3),
-        ("incline press", 8, None, 3),  # catch broader phrasing
-    ]
+        items = found
 
-    picked_sets: list[dict] = []
-
-    # Map a few aliases so looser language still hits
-    aliases = {
-        "bench": "bench press",
-        "ohp": "overhead press",
-        "press": "overhead press",  # if context is push day, this is reasonable
-        "row": "barbell row",
-        "incline": "incline dumbbell press",
-        "pushdowns": "triceps pushdown",
-        "pushdown": "triceps pushdown",
-        "lateral raises": "lateral raise",
-    }
-
-    # Build a normalized search string to match tokens
-    norm = lu_full
-
-    # Collect any canonical names that appear
-    seen = set()
-    for name, reps, weight, count in CANON:
-        if name in norm:
-            seen.add(name)
-
-    # Add by alias
-    for token, canonical in aliases.items():
-        if re.search(rf"\b{re.escape(token)}\b", norm):
-            seen.add(canonical)
-
-    # If no explicit exercises but the user said "push", propose a basic push template
-    if not seen and ("push" in lu_last or "push day" in lu_last):
-        seen.update(["bench press", "overhead press", "lateral raise"])
-
-    # Materialize the set specs in the order of CANON
-    for name, reps, weight, count in CANON:
-        if name in seen:
-            picked_sets.append(
-                {"exercise": name, "reps": reps, "weight": weight, "count": count}
+        # Need essentials?
+        missing = []
+        if not iso_date:
+            missing.append("date")
+        if not items:
+            missing.append("at least one workout")
+        if missing:
+            return InterpretResponse(
+                assistant_text=(
+                    "I can do that—please confirm the missing field(s): "
+                    + ", ".join(missing)
+                    + ". You can also paste this:\n" + PLAN_TEMPLATE
+                ),
+                proposals=[],
             )
 
-    # --- Build proposals -------------------------------------------------------
-    add_payload = AddWorkoutPayload(
-        date=parsed_date,
-        title=title,
-        notes="",  # not abusing notes anymore
-    ).model_dump()
-
-    add_proposal = AIProposal(
+    # --------------------------
+    # Build proposals
+    # --------------------------
+    add_payload = AddWorkoutPayload(date=iso_date, title=title, notes="").model_dump()
+    add_prop = AIProposal(
         intent="add_workout",
         payload=add_payload,
-        summary=f"Add '{title}' on {parsed_date}.",
-        confidence=0.75,
+        summary=f"Add '{title}' on {iso_date}.",
+        confidence=0.9,
         requires_confirmation=True,
         requires_super_confirmation=False,
     )
 
-    proposals: list[AIProposal] = [add_proposal]
+    # upsert_sets with defaults when reps/sets not given
+    def _parse_sets_spec(item: str) -> tuple[str, Optional[int], Optional[int]]:
+        t = item.strip()
+        m = re.search(r"(\d+)\s*[xX]\s*(\d+)", t)
+        if m:
+            a, b = map(int, m.groups())
+            sets, reps = (a, b) if a <= 8 else (b, a)
+            ex = re.sub(r"\d+\s*[xX]\s*\d+", "", t).strip(" -–—")
+            return ex or t, int(reps), int(sets)
+        m = re.search(r"(\d+)\s*sets?\s*of\s*(\d+)", t, flags=re.I)
+        if m:
+            sets, reps = map(int, m.groups())
+            ex = re.sub(r"(\d+)\s*sets?\s*of\s*(\d+)", "", t, flags=re.I).strip(" -–—")
+            return ex or t, int(reps), int(sets)
+        return t, None, None
 
-    # If we have suggested sets, include a second proposal (workout_id unknown yet)
-    if picked_sets:
-        upsert_payload = {
-            "workout_id": 0,     # placeholder; client will inject the created id
-            "mode": "append",
-            "sets": picked_sets,
-        }
+    sets_payload = []
+    for raw in items:
+        ex, reps, sets_ct = _parse_sets_spec(raw)
+        sets_payload.append(
+            {
+                "exercise": ex,
+                "reps": int(reps) if reps is not None else 8,
+                "weight": None,
+                "count": int(sets_ct) if sets_ct is not None else 3,
+            }
+        )
+
+    proposals = [add_prop]
+    if sets_payload:
         proposals.append(
             AIProposal(
                 intent="upsert_sets",
-                payload=upsert_payload,
-                summary=f"Add {len(picked_sets)} exercise group(s) to '{title}'.",
-                confidence=0.75,
+                payload={"workout_id": 0, "mode": "append", "sets": sets_payload},
+                summary=f"Add {len(sets_payload)} exercise group(s) to '{title}'.",
+                confidence=0.9,
                 requires_confirmation=True,
                 requires_super_confirmation=False,
             )
         )
 
     return InterpretResponse(
-        assistant_text=f"I can add **{title}** on {parsed_date}. Want me to queue that?",
+        assistant_text=f"I can add **{title}** on {iso_date}. Want me to queue that?",
         proposals=proposals,
     )
-    
+
 @router.post("/tasks/queue", response_model=list[AITaskOut])
 def queue_tasks(items: list[AITaskCreate], db: Session = Depends(get_db)) -> list[AITaskOut]:
     """
