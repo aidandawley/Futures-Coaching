@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { ping } from "./lib/api";
-import logo from "./assets/Logo2.png";
+import logo from "./assets/futurelogo.png";
 import "./styles/home.css";
 import { listWorkoutsByUser, createWorkout } from "./lib/api";
 
