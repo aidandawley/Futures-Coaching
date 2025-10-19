@@ -137,3 +137,13 @@ export async function updateWorkout(id, patch) {
     throw e;
   }
 }
+
+export function deleteWorkout(id) {
+  const numericId = Number(id);
+  if (!numericId) throw new Error(`deleteWorkout: invalid id "${id}"`);
+  return fetch(`${BASE_URL}/workouts/${numericId}`, { method: "DELETE" })
+    .then(res => {
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      return; // 204
+    });
+}
