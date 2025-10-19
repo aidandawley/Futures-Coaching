@@ -62,7 +62,7 @@ function groupSets(sets) {
 }
 
 export default function Planning() {
-  const userId = 1; // TODO: real current user
+  const userId = window.FC_USER_ID;; 
 
   // week state
   const [currentWeekStart, setCurrentWeekStart] = useState(getWeekStart(new Date()));

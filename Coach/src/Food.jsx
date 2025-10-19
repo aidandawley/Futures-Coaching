@@ -4,6 +4,8 @@ import "./styles/food.css";
 import coachImg from "./assets/Coach.png";
 import { aiChat } from "./lib/api"; // talk to the backend coach
 
+
+
 /* tiny date utils (monday-start weeks like tracker) */
 function toISODate(d) { return d.toISOString().slice(0, 10); }
 function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
@@ -80,7 +82,7 @@ export default function Food() {
   const cancelForm = () => { setShowForm(false); resetDraft(); };
 
   /* coach chat state (simple, stateless server; no updates to entries) */
-  const userId = 1; // todo: replace with real auth identity
+  const userId = window.FC_USER_ID;; 
   const [chatLog, setChatLog] = useState([
     { role: "assistant", content: "How are your meals today?" },
   ]);

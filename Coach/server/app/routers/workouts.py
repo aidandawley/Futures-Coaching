@@ -22,14 +22,21 @@ class WorkoutPatch(BaseModel):
     status: str | None = None           # e.g. "planned" | "done" | "rest"
     scheduled_for: date | None = None   # YYYY-MM-DD
 
+
 # create a workout
 @router.post("/", response_model=WorkoutRead)
 def create_workout(workout: WorkoutCreate, db: Session = Depends(get_db)):
+    # ensure the FK exists, otherwise return a clean 400
+    user = db.get(models.User, workout.user_id)
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid user_id: user does not exist")
+
     new_workout = models.WorkoutSession(**workout.dict())
     db.add(new_workout)
     db.commit()
     db.refresh(new_workout)
     return new_workout
+
 
 # list all workouts (admin/dev convenience)
 @router.get("/", response_model=list[WorkoutRead])

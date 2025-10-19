@@ -43,7 +43,7 @@ function groupSets(sets) {
 }
 
 export default function Tracker() {
-  const userId = 1; // todo: real current user
+  const userId = window.FC_USER_ID;; 
 
   // week state
   const [currentWeekStart, setCurrentWeekStart] = useState(getWeekStart(new Date()));
