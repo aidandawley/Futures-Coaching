@@ -455,37 +455,34 @@ html, body { background-color: #0b1220; }
   color: rgba(255,255,255,.7);
 }
 
-/* ensure the card itself stays dark but text is readable */
 .day-modal .day-list .workout-card {
   background: rgba(255,255,255,.04);
   border: 1px solid rgba(255,255,255,.08);
 }
 
-/* --- form labels & inputs inside the modal --- */
+
 .day-modal .field label {
   color: #fff;
 }
 
-/* inputs/textarea/select use a dark background with white text */
+
 .day-modal .field input,
 .day-modal .field textarea,
 .day-modal .field select {
-  background: #111827;              /* dark slate */
+  background: #111827;             
   border: 1px solid #2a2f3a;
   color: #fff;
 }
 
-/* placeholder / helper text */
 .day-modal ::placeholder {
   color: rgba(255,255,255,.5);
 }
 
-/* make the select readable even when unfocused */
+
 .day-modal .field select {
   appearance: none;
   -webkit-appearance: none;
-  background-image: none;            /* remove native arrow if you style your own */
+  background-image: none;            
 }
 
-/* optional: status chip already ok; keep contrast for the pill */
 .chip { color: #fff; }

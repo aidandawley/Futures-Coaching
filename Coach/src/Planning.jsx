@@ -1,5 +1,5 @@
 // src/Planning.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import "./styles/planning.css";
@@ -15,6 +15,8 @@ import {
   deleteSet,
   listSetsByWorkout,
   createSetsBulk,
+  aiChat,
+  aiInterpret
 } from "./lib/api";
 
 // --- helpers ---
@@ -59,7 +61,7 @@ function groupSets(sets) {
 }
 
 export default function Planning() {
-  const userId = 1; // todo: real current user
+  const userId = 1; // TODO: real current user
 
   // week state
   const [currentWeekStart, setCurrentWeekStart] = useState(getWeekStart(new Date()));
@@ -92,6 +94,16 @@ export default function Planning() {
   const [newCount, setNewCount] = useState("1");
   const [newWeight, setNewWeight] = useState("");
 
+  // ---- AI chat + proposals ----
+  const [chatInput, setChatInput] = useState("");
+  const [chat, setChat] = useState([
+    { role: "assistant", content: "hey! tell me your goal + days/week and i'll help plan." },
+  ]); // [{role:'user'|'assistant', content}]
+  const [chatSending, setChatSending] = useState(false);
+
+  const [proposals, setProposals] = useState([]); // from /ai/plan/interpret
+
+  // updating message
   const [toast, setToast] = useState(null);
   function pushToast(msg) {
     setToast(msg);
@@ -141,10 +153,7 @@ export default function Planning() {
       isNew: false,
     }));
     setRows(grouped);
-    
-
     setDirty(false);
-    pushToast("changes saved");
   }, [sets]);
 
   // week controls
@@ -210,7 +219,6 @@ export default function Planning() {
       console.error(err);
       setSaveError(err.message || "Failed to save workout");
       pushToast(err.message || "failed to save");
-
     } finally {
       setSaving(false);
     }
@@ -364,15 +372,147 @@ export default function Planning() {
       await openWorkoutDetail(selectedWorkout.id);
       await loadWeek(currentWeekStart);
       setDirty(false);
+      pushToast("changes saved");
     } catch (err) {
       alert(err.message || "failed to save changes");
       pushToast(err.message || "save failed");
-
     } finally {
       setSaving(false);
     }
   }
 
+  // ---- AI Coach handlers ----
+  function toMsgSchema(list) {
+    return list.map(m => ({ role: m.role, content: m.content }));
+  }
+
+  async function handleCoachSubmit(e) {
+    e.preventDefault();
+    const msg = chatInput.trim();
+    if (!msg || chatSending) return;
+  
+    // append user bubble
+    const nextTranscript = [...chat, { role: "user", content: msg }];
+    setChat(nextTranscript);
+    setChatInput("");
+    setChatSending(true);
+  
+    try {
+      // 1) normal chat reply
+      const reply = await aiChat(nextTranscript, userId);
+      setChat(prev => [...prev, reply]); // reply = {role:"assistant", content:"..."}
+  
+      // 2) interpret for proposals (but DO NOT queue automatically)
+      const shouldInterpret = /plan|schedule|add|move|sets|legs|push|pull/i.test(msg);
+      if (shouldInterpret) {
+        const res = await aiInterpret(
+          nextTranscript.map(m => ({ role: m.role, content: m.content })),
+          userId
+        );
+        if (res?.assistant_text) {
+          setChat(prev => [...prev, { role: "assistant", content: res.assistant_text }]);
+        }
+        setProposals(res?.proposals || []);
+      }
+    } catch (err) {
+      pushToast(err.message || "coach error");
+    } finally {
+      setChatSending(false);
+    }
+  }
+
+
+
+  async function applyNow(p, idx) {
+    try {
+      if (p.intent === "add_workout") {
+        const { date, title, notes } = p.payload || {};
+  
+        // 1) create workout on the backend
+        const created = await createWorkout({
+          user_id: userId,
+          title: title || "Workout",
+          notes: notes || "",
+          scheduled_for: date,
+          status: "planned",
+        });
+  
+        // 2) optimistic calendar update
+        setWorkoutsByDay(prev => {
+          const next = { ...prev };
+          const list = next[date] ? [...next[date]] : [];
+          list.push({ ...created, sets: created.sets ?? [] });
+          next[date] = list;
+          return next;
+        });
+  
+        // 3) refresh week
+        await loadWeek(currentWeekStart);
+  
+        // 4) inject workout_id into any pending upsert_sets cards
+        setProposals(prev =>
+          prev.map(card =>
+            card.intent === "upsert_sets" &&
+            (!card.payload?.workout_id || card.payload.workout_id === 0)
+              ? {
+                  ...card,
+                  payload: { ...card.payload, workout_id: created.id },
+                  summary: card.summary || `Add exercises to '${created.title || "Workout"}'`,
+                }
+              : card
+          )
+        );
+  
+        pushToast("Workout added");
+  
+        // 5) remove only this card
+        setProposals(prev => prev.filter((_, i) => i !== idx));
+        return;
+      }
+  
+      if (p.intent === "upsert_sets") {
+        const payload = p.payload || {};
+        const workoutId = Number(payload.workout_id || 0);
+  
+        if (!workoutId) {
+          pushToast("Approve the workout card first so I have the workout ID");
+          return;
+        }
+  
+        if (Array.isArray(payload.sets)) {
+          for (const g of payload.sets) {
+            const count = Math.max(1, Number(g.count || 1));
+            await createSetsBulk({
+              workout_id: workoutId,
+              exercise: g.exercise,
+              reps: Number(g.reps || 0),
+              count,
+              weight: g.weight === undefined ? null : g.weight,
+            });
+          }
+        }
+  
+        // refresh the workout detail + week so UI reflects new sets
+        if (selectedWorkout?.id === workoutId) {
+          await openWorkoutDetail(workoutId);
+        }
+        await loadWeek(currentWeekStart);
+  
+        pushToast("Sets added");
+        setProposals(prev => prev.filter((_, i) => i !== idx));
+        return;
+      }
+  
+      // Unknown intent – just remove the card
+      setProposals(prev => prev.filter((_, i) => i !== idx));
+      pushToast("Done");
+    } catch (e) {
+      console.error(e);
+      pushToast(e.message || "Failed to apply");
+    }
+  }
+  
+  
   return (
     <main className="planning-page">
       <div className="planning-grid">
@@ -482,25 +622,85 @@ export default function Planning() {
               );
             })}
           </div>
-         
-
         </section>
 
         {/* right — ai coach */}
         <aside className="panel-dark coach-panel">
           <header className="panel-head"><h2>AI Coach</h2></header>
+
           <div className="coach-avatar has-image">
             <img src={coachImg} alt="AI Coach avatar" />
             <span className="muted">Upload coach image</span>
           </div>
+
+          {/* chat log */}
           <div className="chat-log">
-            <div className="msg coach">How was your chest workout?</div>
-            <div className="msg user">Felt strong! Bench moved well.</div>
-            <div className="msg coach">Great! We’ll add 2.5–5 lb next session.</div>
+            {chat.map((m, i) => (
+              <div key={i} className={`msg ${m.role === "user" ? "user" : "coach"}`}>
+                {m.content}
+              </div>
+            ))}
           </div>
-          <form className="chat-input" onSubmit={(e) => e.preventDefault()}>
-            <input type="text" placeholder="Ask your coach…" />
-            <button type="submit" className="btn btn--blue">Send</button>
+
+          {/* proposals */}
+          {proposals.length > 0 && (
+            <div className="workout-card" style={{ marginBottom: 10 }}>
+              <div className="row">
+                <div className="title">Suggested changes</div>
+              </div>
+              <ul style={{ listStyle: "none", padding: 0, margin: "8px 0 0 0", display: "grid", gap: 8 }}>
+                {proposals.map((p, idx) => (
+                  <li key={idx} className="workout-card" style={{ padding: 10 }}>
+                    <div className="row">
+                      <div className="w-title">{p.summary || p.intent}</div>
+                      <span className="chip chip--planned">
+                        conf {Math.round((p.confidence ?? 0.7) * 100)}%
+                      </span>
+                    </div>
+                    <pre className="muted" style={{ whiteSpace: "pre-wrap", marginTop: 6 }}>
+                      {JSON.stringify(p.payload, null, 2)}
+                    </pre>
+                    <div className="row" style={{ marginTop: 8, gap: 8 }}>
+                    <button
+                      type="button"
+                      className="btn btn--blue"
+                      onClick={() => applyNow(p, idx)}
+                      disabled={p.intent === "upsert_sets" && p.payload?.workout_id === 0}
+                      title={
+                        p.intent === "upsert_sets" && p.payload?.workout_id === 0
+                          ? "Approve the workout card first, then add sets"
+                          : ""
+                      }
+                    >
+                      Confirm
+                    </button>
+
+<button
+  type="button"
+  className="ghost"
+  onClick={() => setProposals(prev => prev.filter((_, i) => i !== idx))}  // << remove only this card
+>
+  Dismiss
+</button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* chat input */}
+          <form className="chat-input" onSubmit={handleCoachSubmit}>
+            <input
+              type="text"
+              placeholder={chatSending ? "thinking…" : "Ask your coach…"}
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              disabled={chatSending}
+            />
+            <button type="submit" className="btn btn--blue" disabled={chatSending}>
+            {chatSending ? "sending…" : "send"}
+            </button>
           </form>
         </aside>
       </div>
@@ -708,6 +908,7 @@ export default function Planning() {
           </div>
         </div>
       )}
+
       {toast && <div className="toast">{toast}</div>}
     </main>
   );

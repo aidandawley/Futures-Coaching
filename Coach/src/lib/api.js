@@ -97,3 +97,69 @@ export function createSetsBulk({ workout_id, exercise, reps, count, weight = nul
   }
   return fetchJSON(`/sets/bulk`, { method: "POST", body });
 }
+
+/**
+ * chat with the ai
+ * @param {Array<{role: 'system'|'user'|'assistant', content: string}>} messages
+ * @param {number} [userId]  optional
+ * @returns {Promise<{role: 'assistant', content: string}>}
+ */
+export function aiChat(messages, userId) {
+  return fetchJSON("/ai/chat", {
+    method: "POST",
+    body: { messages, user_id: userId ?? 1 },
+  });
+}
+
+export function aiInterpret(messages, user_id = 1) {
+  return fetchJSON(`/ai/plan/interpret`, {
+    method: "POST",
+    body: { messages, user_id },
+  });
+}
+
+export function aiQueueTasks(items) {
+  return fetchJSON(`/ai/tasks/queue`, {
+    method: "POST",
+    body: items, // array of tasks
+  });
+}
+
+export function aiListTasks(user_id, status) {
+  const qs = new URLSearchParams({ user_id: String(user_id) });
+  if (status) qs.set("status", status);
+  return fetchJSON(`/ai/tasks?${qs.toString()}`);
+}
+
+export function aiApproveTask(taskId) {
+  return fetchJSON(`/ai/tasks/${taskId}/approve`, { method: "POST" });
+}
+
+export function aiRejectTask(taskId) {
+  return fetchJSON(`/ai/tasks/${taskId}/reject`, { method: "POST" });
+}
+
+
+
+export async function updateWorkout(id, patch) {
+  const numericId = Number(id);
+  if (!numericId) throw new Error(`updateWorkout: invalid id "${id}"`);
+
+  // first try without trailing slash
+  try {
+    return await fetchJSON(`/workouts/${numericId}`, {
+      method: "PATCH",
+      body: patch,
+    });
+  } catch (e) {
+    // if the server is slash-strict, retry with trailing slash
+    if (String(e.message).toLowerCase().includes("404")) {
+      return await fetchJSON(`/workouts/${numericId}/`, {
+        method: "PATCH",
+        body: patch,
+      });
+    }
+    throw e;
+  }
+}
+
