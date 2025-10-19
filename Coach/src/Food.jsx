@@ -1,8 +1,18 @@
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import "./styles/food.css";
 import coachImg from "./assets/Coach.png";
 
+/* ---------- tiny date utils (match Tracker’s behavior: Monday-start weeks) ---------- */
+function toISODate(d) { return d.toISOString().slice(0, 10); }
+function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
+function getWeekStart(d) {
+  const x = new Date(d);
+  const dow = (x.getDay() + 6) % 7; // Mon=0 … Sun=6
+  x.setDate(x.getDate() - dow);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
 function nowHHMM() {
   const d = new Date();
   const hh = String(d.getHours()).padStart(2, "0");
@@ -10,11 +20,47 @@ function nowHHMM() {
   return `${hh}:${mm}`;
 }
 
-export default function Food() {
-  const [entries, setEntries] = useState([
+/* ---------- demo seed for today only; other days start empty ---------- */
+const seedToday = toISODate(new Date());
+const initialEntriesByDay = {
+  [seedToday]: [
     { id: 1, title: "Entry #1", time: "12:00", calories: 450, protein: 35, carbs: 48, fat: 14 },
     { id: 2, title: "Entry #2", time: "19:30", calories: 620, protein: 42, carbs: 70, fat: 20 },
-  ]);
+  ],
+};
+
+export default function Food() {
+  /* ---------- calendar / day selection ---------- */
+  const [currentWeekStart, setCurrentWeekStart] = useState(getWeekStart(new Date()));
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i));
+  const [selectedDayISO, setSelectedDayISO] = useState(toISODate(new Date()));
+
+  const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const weekEnd = addDays(currentWeekStart, 6);
+  const weekLabel = `${currentWeekStart.toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${weekEnd.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+
+  function prevWeek() { setCurrentWeekStart(addDays(currentWeekStart, -7)); }
+  function nextWeek() { setCurrentWeekStart(addDays(currentWeekStart, 7)); }
+  function goToToday() {
+    const today = new Date();
+    setCurrentWeekStart(getWeekStart(today));
+    setSelectedDayISO(toISODate(today));
+  }
+
+  /* ---------- entries are stored per-day so calendar can show totals ---------- */
+  const [entriesByDay, setEntriesByDay] = useState(initialEntriesByDay);
+
+  // convenience getter/setter for entries for the selected day
+  const entries = entriesByDay[selectedDayISO] ?? [];
+  function setEntriesForSelected(updater) {
+    setEntriesByDay((prev) => {
+      const current = prev[selectedDayISO] ?? [];
+      const nextList = typeof updater === "function" ? updater(current) : updater;
+      return { ...prev, [selectedDayISO]: nextList };
+    });
+  }
+
+  /* ---------- add-entry form state ---------- */
   const [showForm, setShowForm] = useState(false);
   const [draft, setDraft] = useState({
     title: "",
@@ -25,7 +71,14 @@ export default function Food() {
     fat: "",
   });
 
-  // totals update whenever entries change
+  const resetDraft = () => {
+    setDraft({ title: "", time: nowHHMM(), calories: "", protein: "", carbs: "", fat: "" });
+  };
+
+  const openForm = () => { resetDraft(); setShowForm(true); };
+  const cancelForm = () => { setShowForm(false); resetDraft(); };
+
+  /* ---------- derived totals (for the selected day) ---------- */
   const totals = useMemo(() => {
     return entries.reduce(
       (a, e) => ({
@@ -38,33 +91,58 @@ export default function Food() {
     );
   }, [entries]);
 
-  const resetDraft = () => {
-    setDraft({ title: "", time: nowHHMM(), calories: "", protein: "", carbs: "", fat: "" });
-  };
+  /* ---------- compute per-day totals for the whole week (for chips on each column) ---------- */
+  const totalsByISO = useMemo(() => {
+    const map = new Map();
+    for (const d of weekDays) {
+      const iso = toISODate(d);
+      const list = entriesByDay[iso] ?? [];
+      const t = list.reduce(
+        (a, e) => ({
+          calories: a.calories + (e.calories || 0),
+          protein:  a.protein  + (e.protein  || 0),
+          carbs:    a.carbs    + (e.carbs    || 0),
+          fat:      a.fat      + (e.fat      || 0),
+        }),
+        { calories: 0, protein: 0, carbs: 0, fat: 0 }
+      );
+      map.set(iso, t);
+    }
+    return map;
+  }, [weekDays, entriesByDay]);
 
-  const openForm = () => { resetDraft(); setShowForm(true); };
-  const cancelForm = () => { setShowForm(false); resetDraft(); };
-
+  /* ---------- handlers ---------- */
   const saveEntry = (e) => {
     e.preventDefault();
-    const nextId = entries.length ? Math.max(...entries.map(x => x.id)) + 1 : 1;
-    const title = draft.title.trim() || `Entry #${nextId}`;
-    const time  = draft.time.trim() || nowHHMM();
-    const toNum = (v) => (v === "" ? 0 : Math.max(0, Number(v) || 0));
-
-    const newEntry = {
-      id: nextId, title, time,
-      calories: toNum(draft.calories),
-      protein:  toNum(draft.protein),
-      carbs:    toNum(draft.carbs),
-      fat:      toNum(draft.fat),
-    };
-    setEntries((prev) => [newEntry, ...prev]);
+    setEntriesForSelected((prev) => {
+      const nextId = prev.length ? Math.max(...prev.map(x => x.id)) + 1 : 1;
+      const title = draft.title.trim() || `Entry #${nextId}`;
+      const time  = draft.time.trim() || nowHHMM();
+      const toNum = (v) => (v === "" ? 0 : Math.max(0, Number(v) || 0));
+      const newEntry = {
+        id: nextId, title, time,
+        calories: toNum(draft.calories),
+        protein:  toNum(draft.protein),
+        carbs:    toNum(draft.carbs),
+        fat:      toNum(draft.fat),
+      };
+      return [newEntry, ...prev].sort((a, b) => a.time.localeCompare(b.time)); // keep chronological
+    });
     setShowForm(false);
     resetDraft();
   };
 
-  const removeEntry = (id) => setEntries((prev) => prev.filter((e) => e.id !== id));
+  const removeEntry = (id) => {
+    setEntriesForSelected((prev) => prev.filter((e) => e.id !== id));
+  };
+
+  // when you flip weeks and the previously selected day is outside, select the Monday
+  useEffect(() => {
+    const weekISO = new Set(weekDays.map(toISODate));
+    if (!weekISO.has(selectedDayISO)) {
+      setSelectedDayISO(toISODate(currentWeekStart));
+    }
+  }, [currentWeekStart]); // eslint-disable-line
 
   return (
     <main className="food-page">
@@ -83,21 +161,53 @@ export default function Food() {
           <Link className="back-link" to="/home">← Back to Home</Link>
         </aside>
 
-        {/* center — food log */}
+        {/* center — calendar + food log for selected day */}
         <section className="panel-dark log-panel">
           <header className="panel-head">
-            <h2>Food Log</h2>
+            <h2>Nutrition Calendar</h2>
             <div className="day-switch">
-              <button className="ghost" type="button">←</button>
-              <div className="date muted">Today • MM/DD</div>
-              <button className="ghost" type="button">→</button>
+              <button className="ghost" type="button" onClick={prevWeek}>←</button>
+              <div className="date muted">Week • {weekLabel}</div>
+              <button className="ghost" type="button" onClick={nextWeek}>→</button>
+              <button className="ghost" type="button" onClick={goToToday} style={{ marginLeft: 8 }}>Today</button>
             </div>
           </header>
 
+          {/* weekly grid with daily calorie chips */}
+          <div className="calendar-grid calendar-grid--food">
+            {weekDays.map((d, i) => {
+              const iso = toISODate(d);
+              const t = totalsByISO.get(iso) || { calories: 0 };
+              const isSelected = iso === selectedDayISO;
+              return (
+                <button
+                  key={iso}
+                  type="button"
+                  className={`day-col ${isSelected ? "selected" : ""}`}
+                  onClick={() => setSelectedDayISO(iso)}
+                  title="View this day’s log"
+                >
+                  <div className="day-head">
+                    <div className="day-name">{dayNames[i]}</div>
+                    <div className="day-date muted">{d.getDate()}</div>
+                  </div>
+                  <div className="nutri-chip">
+                    <span className="nutri-chip__label">kcal</span>
+                    <span className="nutri-chip__value">{t.calories}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* selected-day log + totals */}
           <div className="log-body">
-            {/* totals at the top */}
+            {/* totals for selected day */}
             <div className="summary-card">
-              <div className="summary-head"><span className="muted">Totals</span></div>
+              <div className="summary-head">
+                <span className="muted">Totals • {selectedDayISO}</span>
+                <button className="btn btn--blue" type="button" onClick={openForm}>+ Add Entry</button>
+              </div>
               <div className="summary-row">
                 <div className="metric"><div className="label">Calories</div><div className="value">{totals.calories}</div><div className="unit">kcal</div></div>
                 <div className="metric"><div className="label">Protein</div><div className="value">{totals.protein}</div><div className="unit">g</div></div>
@@ -175,7 +285,7 @@ export default function Food() {
               </form>
             )}
 
-            {/* add tile */}
+            {/* add tile (kept for keyboard/tap affordance) */}
             {!showForm && (
               <button className="entry-card add" type="button" onClick={openForm}>
                 <span className="plus">＋</span>
@@ -183,7 +293,7 @@ export default function Food() {
               </button>
             )}
 
-            {/* entries */}
+            {/* entries (for selected day only) */}
             {entries.map((e) => (
               <article className="entry-card" key={e.id}>
                 <div className="entry-head">

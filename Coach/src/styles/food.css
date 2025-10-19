@@ -218,3 +218,115 @@
     .summary-row{ grid-template-columns: repeat(2, minmax(120px,1fr)); }
   }
   
+  /* calendar grid reused from tracker aesthetics (slimmed) */
+.calendar-grid.calendar-grid--food{
+  display:grid;
+  grid-template-columns: repeat(7, minmax(120px,1fr));
+  gap: clamp(8px, 1vw, 12px);
+  margin-bottom: 12px;
+}
+.day-col{
+  text-align:left;
+  border:1px solid var(--panel-border);
+  border-radius:14px;
+  padding:10px;
+  background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
+  cursor:pointer;
+  transition:transform .08s ease, box-shadow .15s ease, background .2s ease;
+}
+.day-col:hover{ transform: translateY(-1px); box-shadow:0 10px 20px rgba(14,165,233,.20); }
+.day-col.selected{ outline:2px solid var(--accent); }
+
+.day-head{ display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:8px; }
+.day-name{ font-weight:700; letter-spacing:.2px; }
+
+/* small chip that shows daily kcal total */
+.nutri-chip{
+  display:inline-flex; align-items:baseline; gap:6px;
+  border:1px solid var(--panel-border);
+  border-radius:999px;
+  padding:6px 10px;
+  background:rgba(14,165,233,.08);
+}
+.nutri-chip__label{ font-size:12px; opacity:.85; }
+.nutri-chip__value{ font-weight:800; font-size:16px; line-height:1; }
+
+/* responsive */
+@media (max-width: 900px){
+  .calendar-grid.calendar-grid--food{ grid-template-columns: repeat(3, minmax(120px,1fr)); }
+}
+@media (max-width: 600px){
+  .calendar-grid.calendar-grid--food{ grid-template-columns: repeat(2, minmax(120px,1fr)); }
+}
+
+/* ---- FOOD CALENDAR OVERRIDES (scoped) ---- */
+.food-page .calendar-grid.calendar-grid--food{
+  display:grid;
+  grid-template-columns: repeat(7, minmax(140px,1fr));
+  gap: clamp(8px, 1vw, 12px);
+  margin-bottom: 12px;
+}
+
+/* force Food’s own look; ignore tracker.css */
+.food-page .calendar-grid--food .day-col{
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+  align-items:flex-start;
+
+  text-align:left;
+  padding:12px;
+  min-height:160px;
+
+  background: rgba(255,255,255,.06);
+  border:1px solid var(--panel-border);
+  border-radius:16px;
+  box-shadow: none;
+
+  cursor:pointer;
+  transition:transform .08s ease, box-shadow .15s ease, background .2s ease;
+}
+.food-page .calendar-grid--food .day-col:hover{
+  transform: translateY(-1px);
+  box-shadow:0 10px 20px rgba(14,165,233,.20);
+}
+.food-page .calendar-grid--food .day-col.selected{
+  outline:2px solid var(--accent);
+  background: rgba(14,165,233,.10);
+}
+
+/* keep the header compact; remove “band” look */
+.food-page .calendar-grid--food .day-head{
+  width:100%;
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  margin:0;                 /* was adding extra dark bar feel */
+  padding:0;
+  background: transparent;  /* defeat any inherited backgrounds */
+}
+
+/* kcal chip */
+.food-page .calendar-grid--food .nutri-chip{
+  display:inline-flex;
+  align-items:baseline;
+  gap:6px;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid var(--panel-border);
+  background:rgba(14,165,233,.12);
+}
+.food-page .calendar-grid--food .nutri-chip__label{ font-size:12px; opacity:.85; }
+.food-page .calendar-grid--food .nutri-chip__value{ font-weight:800; font-size:16px; line-height:1; }
+
+/* responsive tweaks */
+@media (max-width: 900px){
+  .food-page .calendar-grid.calendar-grid--food{
+    grid-template-columns: repeat(3, minmax(140px,1fr));
+  }
+}
+@media (max-width: 600px){
+  .food-page .calendar-grid.calendar-grid--food{
+    grid-template-columns: repeat(2, minmax(140px,1fr));
+  }
+}
