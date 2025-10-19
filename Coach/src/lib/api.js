@@ -1,5 +1,9 @@
 // src/lib/api.js
-const BASE_URL = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
+const BASE_URL =
+  import.meta.env.VITE_API_BASE_URL
+  || (location.hostname === "localhost"
+      ? "http://127.0.0.1:8000"
+      : "https://futures-coaching.onrender.com");
 
 
 export async function fetchJSON(path, { method = "GET", body } = {}) {
