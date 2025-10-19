@@ -138,3 +138,28 @@ export function aiApproveTask(taskId) {
 export function aiRejectTask(taskId) {
   return fetchJSON(`/ai/tasks/${taskId}/reject`, { method: "POST" });
 }
+
+
+
+export async function updateWorkout(id, patch) {
+  const numericId = Number(id);
+  if (!numericId) throw new Error(`updateWorkout: invalid id "${id}"`);
+
+  // first try without trailing slash
+  try {
+    return await fetchJSON(`/workouts/${numericId}`, {
+      method: "PATCH",
+      body: patch,
+    });
+  } catch (e) {
+    // if the server is slash-strict, retry with trailing slash
+    if (String(e.message).toLowerCase().includes("404")) {
+      return await fetchJSON(`/workouts/${numericId}/`, {
+        method: "PATCH",
+        body: patch,
+      });
+    }
+    throw e;
+  }
+}
+
