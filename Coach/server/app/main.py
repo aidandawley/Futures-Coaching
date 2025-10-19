@@ -10,18 +10,19 @@ from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI()
 
 
-FRONTENDS = [
+ALLOWED_ORIGINS = [
+    "https://futures-coaching-1.onrender.com",  
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "https://<your-frontend-onrender>.onrender.com",  # replace
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=FRONTENDS,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,      
+    allow_methods=["*"],
+    allow_headers=["*"],
+    
 )
 
 models.Base.metadata.create_all(bind=engine)
