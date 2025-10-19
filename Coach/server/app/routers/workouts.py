@@ -4,7 +4,7 @@
 from datetime import date
 
 # ── third-party ────────────────────────────────────────────────────────────────
-from fastapi import APIRouter, Depends, HTTPException, Query, Path
+from fastapi import APIRouter, Depends, HTTPException, Query, Path, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 
@@ -146,3 +146,24 @@ def update_workout(
         db.refresh(w)
 
     return w
+
+
+# delete a workout (and its sets) by id
+@router.delete("/{workout_id}", status_code=204)
+def delete_workout(
+    workout_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+):
+    # fetch the workout
+    w = db.query(models.WorkoutSession).get(workout_id)
+    if not w:
+        raise HTTPException(status_code=404, detail="Workout not found")
+
+    try:
+        db.query(models.Set).filter(models.Set.workout_id == workout_id).delete(synchronize_session=False)
+    except Exception:
+        pass
+
+    db.delete(w)
+    db.commit()
+    return Response(status_code=204)

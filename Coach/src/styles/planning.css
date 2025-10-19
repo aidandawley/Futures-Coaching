@@ -486,3 +486,21 @@ html, body { background-color: #0b1220; }
 }
 
 .chip { color: #fff; }
+
+/* reserve space on the right so the delete button isn't covered */
+.day-modal .day-list .workout-card {
+  position: relative;             /* anchor the absolute delete button */
+  padding-right: 84px;            /* space for the delete button */
+}
+
+/* float the delete button above chips/badges */
+.day-modal .workout-delete {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 5;                     /* ensure it's clickable */
+  border-color: rgba(239,68,68,.45);
+}
+.day-modal .workout-delete:hover {
+  border-color: rgba(239,68,68,.65);
+}

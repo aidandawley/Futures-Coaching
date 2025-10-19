@@ -16,7 +16,8 @@ import {
   listSetsByWorkout,
   createSetsBulk,
   aiChat,
-  aiInterpret
+  aiInterpret,
+  deleteWorkout,
 } from "./lib/api";
 
 // --- helpers ---
@@ -291,6 +292,40 @@ export default function Planning() {
     setDirty(true);
   }
 
+  // delete a workout from the planning modal list (component scope)
+async function handleDeleteWorkout(w) {
+  if (!w?.id) return;
+  // optional: confirm
+  // if (!window.confirm(`Delete "${w.title || "Workout"}"?`)) return;
+
+  const day = w.scheduled_for;
+
+  try {
+    await deleteWorkout(w.id); // calls DELETE /workouts/{id}
+
+    // remove from calendar map
+    setWorkoutsByDay(prev => {
+      const next = { ...prev };
+      const list = (next[day] || []).filter(x => x.id !== w.id);
+      if (list.length) next[day] = list;
+      else delete next[day];
+      return next;
+    });
+
+    // if it was open in detail, close it
+    if (selectedWorkout?.id === w.id) {
+      closeWorkoutDetail();
+    }
+
+    // refresh the week just to be safe
+    await loadWeek(currentWeekStart);
+    pushToast("workout deleted");
+  } catch (err) {
+    console.error(err);
+    pushToast(err.message || "failed to delete");
+  }
+}
+
   // single save: apply all row edits to backend
   async function saveAllChanges() {
     if (!selectedWorkout) return;
@@ -357,34 +392,38 @@ export default function Planning() {
         }
       }
 
-      // also handle groups that disappeared (not present in rows anymore)
-      const remainingKeys = new Set(rows.filter((r) => r.origKey).map((r) => r.origKey));
-      for (const og of originalGroups) {
-        if (!remainingKeys.has(og.key)) {
-          // delete all sets in this original group
-          for (const id of og.ids) {
-            await deleteSet(id);
-          }
-        }
-      }
-
-      // reload workout + calendar
-      await openWorkoutDetail(selectedWorkout.id);
-      await loadWeek(currentWeekStart);
-      setDirty(false);
-      pushToast("changes saved");
-    } catch (err) {
-      alert(err.message || "failed to save changes");
-      pushToast(err.message || "save failed");
-    } finally {
-      setSaving(false);
-    }
-  }
+      
 
   // ---- AI Coach handlers ----
   function toMsgSchema(list) {
     return list.map(m => ({ role: m.role, content: m.content }));
   }
+
+  
+
+  // also handle groups that disappeared (not present in rows anymore)
+  const remainingKeys = new Set(rows.filter((r) => r.origKey).map((r) => r.origKey));
+  for (const og of originalGroups) {
+    if (!remainingKeys.has(og.key)) {
+      // delete all sets in this original group
+      for (const id of og.ids) {
+        await deleteSet(id);
+      }
+    }
+  }
+
+  // reload workout + calendar
+  await openWorkoutDetail(selectedWorkout.id);
+  await loadWeek(currentWeekStart);
+  setDirty(false);
+  pushToast("changes saved");
+} catch (err) {
+  alert(err.message || "failed to save changes");
+  pushToast(err.message || "save failed");
+} finally {
+  setSaving(false);
+}
+}
 
   async function handleCoachSubmit(e) {
     e.preventDefault();
@@ -721,23 +760,37 @@ export default function Planning() {
                 if (items.length === 0) return <p className="muted">No workouts scheduled.</p>;
                 return (
                   <ul className="day-list">
-                    {items.map((w) => (
-                      <li key={w.id}>
-                        <button
-                          type="button"
-                          className="workout-card"
-                          onClick={() => openWorkoutDetail(w.id)}
-                          style={{ width: "100%", textAlign: "left" }}
-                          title="open workout detail"
-                        >
-                          <div className="row">
-                            <div className="title">{w.title || "Workout"}</div>
-                            <Chip status={w.status || "planned"} />
-                          </div>
-                          {w.notes ? <div className="muted">{w.notes}</div> : null}
-                        </button>
-                      </li>
-                    ))}
+                   {items.map((w) => (
+  <li key={w.id}>
+    <div
+      className="workout-card"
+      style={{ width: "100%", textAlign: "left", position: "relative" }}
+      onClick={() => openWorkoutDetail(w.id)}
+      title="open workout detail"
+    >
+      <div className="row">
+        <div className="title">{w.title || "Workout"}</div>
+        <Chip status={w.status || "planned"} />
+      </div>
+      {w.notes ? <div className="muted">{w.notes}</div> : null}
+
+      {/* tiny delete button in card top-right */}
+      <button
+        type="button"
+        className="ghost"
+        onClick={(e) => { e.stopPropagation(); handleDeleteWorkout(w); }}
+        style={{
+          position: "absolute", top: 8, right: 8,
+          borderColor: "rgba(239,68,68,.4)"
+        }}
+        title="Delete workout"
+      >
+        Delete
+      </button>
+    </div>
+  </li>
+))}
+
                   </ul>
                 );
               })()}
