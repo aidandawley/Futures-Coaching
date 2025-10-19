@@ -11,11 +11,13 @@ app = FastAPI()
 
 
 ALLOWED_ORIGINS = [
-    "https://futures-coaching-1.onrender.com",  
+   
+    "https://futures-coaching-1.onrender.com",
+    "https://futures-coaching.onrender.com",
+  
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
