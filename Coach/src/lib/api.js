@@ -13,14 +13,11 @@ export async function fetchJSON(path, { method = "GET", body } = {}) {
     try {
       const data = await res.json();
       if (data?.detail) {
-        message = typeof data.detail === "string"
-          ? data.detail
-          : JSON.stringify(data.detail);
+        message = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
       }
     } catch {}
     throw new Error(message);
   }
-
   return await res.json();
 }
 
@@ -41,14 +38,10 @@ export function listWorkoutsOnDay(userId, day) {
   return fetchJSON(`/workouts/by_user/${userId}/on/${day}`);
 }
 
-
 export function createWorkout({ user_id, title, notes, scheduled_for, status } = {}) {
   const body = { user_id, title, notes, scheduled_for };
-  if (status) body.status = status;   
-  return fetchJSON("/workouts/", {
-    method: "POST",
-    body,
-  });
+  if (status) body.status = status;
+  return fetchJSON("/workouts/", { method: "POST", body });
 }
 
 export function getWorkoutDetail(workoutId) {
@@ -61,7 +54,6 @@ export function listSetsByWorkout(workoutId) {
 }
 
 export function createSet({ workout_id, exercise, reps, weight = null }) {
-  // weight is optional; send only if provided
   const body = { workout_id, exercise, reps };
   if (weight !== null && weight !== "" && !Number.isNaN(Number(weight))) {
     body.weight = Number(weight);
@@ -74,7 +66,6 @@ export function updateSet(setId, { exercise, reps, weight }) {
   if (exercise !== undefined) body.exercise = exercise;
   if (reps !== undefined) body.reps = Number(reps);
   if (weight !== undefined) {
-    // allow clearing weight to null
     if (weight === "" || weight === null) body.weight = null;
     else body.weight = Number(weight);
   }
@@ -98,16 +89,11 @@ export function createSetsBulk({ workout_id, exercise, reps, count, weight = nul
   return fetchJSON(`/sets/bulk`, { method: "POST", body });
 }
 
-/**
- * chat with the ai
- * @param {Array<{role: 'system'|'user'|'assistant', content: string}>} messages
- * @param {number} [userId]  optional
- * @returns {Promise<{role: 'assistant', content: string}>}
- */
-export function aiChat(messages, userId) {
+/* chat with the ai (scope-aware: planning | nutrition | general) */
+export function aiChat(messages, userId, scope = "planning") {
   return fetchJSON("/ai/chat", {
     method: "POST",
-    body: { messages, user_id: userId ?? 1 },
+    body: { messages, user_id: userId ?? 1, scope },
   });
 }
 
@@ -121,7 +107,7 @@ export function aiInterpret(messages, user_id = 1) {
 export function aiQueueTasks(items) {
   return fetchJSON(`/ai/tasks/queue`, {
     method: "POST",
-    body: items, // array of tasks
+    body: items,
   });
 }
 
@@ -139,27 +125,15 @@ export function aiRejectTask(taskId) {
   return fetchJSON(`/ai/tasks/${taskId}/reject`, { method: "POST" });
 }
 
-
-
 export async function updateWorkout(id, patch) {
   const numericId = Number(id);
   if (!numericId) throw new Error(`updateWorkout: invalid id "${id}"`);
-
-  // first try without trailing slash
   try {
-    return await fetchJSON(`/workouts/${numericId}`, {
-      method: "PATCH",
-      body: patch,
-    });
+    return await fetchJSON(`/workouts/${numericId}`, { method: "PATCH", body: patch });
   } catch (e) {
-    // if the server is slash-strict, retry with trailing slash
     if (String(e.message).toLowerCase().includes("404")) {
-      return await fetchJSON(`/workouts/${numericId}/`, {
-        method: "PATCH",
-        body: patch,
-      });
+      return await fetchJSON(`/workouts/${numericId}/`, { method: "PATCH", body: patch });
     }
     throw e;
   }
 }
-

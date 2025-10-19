@@ -28,12 +28,12 @@ router = APIRouter(prefix="/ai", tags=["AI"])
 
 # ── Schemas used only by this router ───────────────────────────────────────────
 Role = Literal["system", "user", "assistant"]
+Scope = Literal["planning", "nutrition", "general"]  
 
 SYSTEM_PROMPT = """
 You are an AI strength coach embedded inside a workout planner app.
 
 Tone & brevity
-- Start every message with: Yo Whats UP!
 - Keep replies short (1–3 sentences). If you have enough info, also include a PLAN BLOCK.
 
 What to output
@@ -55,6 +55,26 @@ Rules
 - Never claim you change the calendar. You propose; the app applies after confirmation.
 """
 
+NUTRITION_PROMPT = """
+You are an AI nutrition coach inside a food logging app.
+
+Tone & brevity
+- Be concise (1–3 sentences). Friendly, non-judgmental, practical, professional.
+
+What to output
+- If user shares entries/macros or a goal, give specific tips (protein targets, fiber, hydration, meal timing).
+- If info is missing, ask one tiny clarifying question.
+- Never claim you changed logs or goals. You only suggest; the app updates when the user does.
+-If the user ever asks to update the logs tell them that you aren't designed to input logs and they must manaully do so
+-If the user asks for workout or training advice advise it to return to the workout planning section to get advice (there is a tailored ai agent there for training)
+
+Patterns to use sparingly
+- If asked for a plan: provide a short bullet list
+- If user wants a swap: suggest 1–2 equivalent options with grams and rough kcal.
+
+Safety
+- Avoid medical diagnoses and say you are only able to give advice. For medical concerns, suggest consulting a professional.
+"""
 class ChatMessage(BaseModel):
     role: Role
     content: str = Field(min_length=1)
@@ -63,13 +83,16 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
     user_id: Optional[int] = None
-
+    scope: Optional[Scope] = "planning"
 
 class ChatReply(BaseModel):
     role: Literal["assistant"] = "assistant"
     content: str
 
-
+PROMPTS: dict[str, str] = {
+    "planning": SYSTEM_PROMPT,
+    "nutrition": NUTRITION_PROMPT,
+}
 # ── Helpers ────────────────────────────────────────────────────────────────────
 def _mock_reply(messages: list[ChatMessage]) -> str:
     """Very small heuristic for mock mode."""
@@ -144,20 +167,18 @@ async def chat(req: ChatRequest) -> ChatReply:
     """
     Chat endpoint. Uses mock response when AI_MOCK is true or no API key is set.
     """
+    scope = (req.scope or "planning").lower()
+    system_prompt = PROMPTS.get(scope, SYSTEM_PROMPT)
+
     if settings.AI_MOCK or not settings.GEMINI_API_KEY:
-        return ChatReply(content=_mock_reply(req.messages))
+        return ChatReply(content=_mock_reply(req.messages, scope))
 
     try:
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        messages = [{"role": "system", "content": system_prompt}]
         messages += [m.model_dump() for m in req.messages]
-
-        content = chat_with_gemini(
-    messages,                                  
-    settings.GEMINI_API_KEY,
-    settings.AI_MODEL,
-)
+        content = chat_with_gemini(messages, settings.GEMINI_API_KEY, settings.AI_MODEL)
         return ChatReply(content=content)
-    except Exception as e:  # bubble up as a 502 to the client
+    except Exception as e:
         raise HTTPException(status_code=502, detail=f"gemini error: {e}") from e
 
 

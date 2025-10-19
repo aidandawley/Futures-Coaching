@@ -2,13 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import "./styles/food.css";
 import coachImg from "./assets/Coach.png";
+import { aiChat } from "./lib/api"; // talk to the backend coach
 
-/* ---------- tiny date utils (match Tracker’s behavior: Monday-start weeks) ---------- */
+/* tiny date utils (monday-start weeks like tracker) */
 function toISODate(d) { return d.toISOString().slice(0, 10); }
 function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
 function getWeekStart(d) {
   const x = new Date(d);
-  const dow = (x.getDay() + 6) % 7; // Mon=0 … Sun=6
+  const dow = (x.getDay() + 6) % 7; // mon=0 … sun=6
   x.setDate(x.getDate() - dow);
   x.setHours(0, 0, 0, 0);
   return x;
@@ -20,7 +21,7 @@ function nowHHMM() {
   return `${hh}:${mm}`;
 }
 
-/* ---------- demo seed for today only; other days start empty ---------- */
+/* demo seed for today only; other days start empty */
 const seedToday = toISODate(new Date());
 const initialEntriesByDay = {
   [seedToday]: [
@@ -30,7 +31,7 @@ const initialEntriesByDay = {
 };
 
 export default function Food() {
-  /* ---------- calendar / day selection ---------- */
+  /* calendar / day selection */
   const [currentWeekStart, setCurrentWeekStart] = useState(getWeekStart(new Date()));
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i));
   const [selectedDayISO, setSelectedDayISO] = useState(toISODate(new Date()));
@@ -47,10 +48,10 @@ export default function Food() {
     setSelectedDayISO(toISODate(today));
   }
 
-  /* ---------- entries are stored per-day so calendar can show totals ---------- */
+  /* entries map keyed by iso date so calendar can show totals per day */
   const [entriesByDay, setEntriesByDay] = useState(initialEntriesByDay);
 
-  // convenience getter/setter for entries for the selected day
+  // handy getter/setter for the selected day’s entries
   const entries = entriesByDay[selectedDayISO] ?? [];
   function setEntriesForSelected(updater) {
     setEntriesByDay((prev) => {
@@ -60,7 +61,7 @@ export default function Food() {
     });
   }
 
-  /* ---------- add-entry form state ---------- */
+  /* add-entry form state */
   const [showForm, setShowForm] = useState(false);
   const [draft, setDraft] = useState({
     title: "",
@@ -78,7 +79,49 @@ export default function Food() {
   const openForm = () => { resetDraft(); setShowForm(true); };
   const cancelForm = () => { setShowForm(false); resetDraft(); };
 
-  /* ---------- derived totals (for the selected day) ---------- */
+  /* coach chat state (simple, stateless server; no updates to entries) */
+  const userId = 1; // todo: replace with real auth identity
+  const [chatLog, setChatLog] = useState([
+    { role: "assistant", content: "How are your meals today?" },
+  ]);
+  const [chatDraft, setChatDraft] = useState("");
+  const [chatBusy, setChatBusy] = useState(false);
+
+  // send one message to the coach (nutrition scope); includes light context
+  async function sendCoachMessage(e) {
+    e.preventDefault();
+    const text = chatDraft.trim();
+    if (!text || chatBusy) return;
+
+    // tiny context line so coach can give targeted tips without editing anything
+    const context = `context: ${selectedDayISO} totals → calories ${totals.calories}, protein ${totals.protein}g, carbs ${totals.carbs}g, fat ${totals.fat}g.`;
+
+    const next = [
+      ...chatLog,
+      { role: "assistant", content: context },     // soft hint; backend still uses its own system prompt
+      { role: "user", content: text },
+    ];
+
+    setChatLog(next);
+    setChatDraft("");
+    setChatBusy(true);
+
+    try {
+      // pass scope so backend picks the nutrition prompt
+      const reply = await aiChat(next, userId, "nutrition");
+      setChatLog((prev) => [...prev, { role: "assistant", content: reply.content }]);
+    } catch (err) {
+      console.error(err);
+      setChatLog((prev) => [
+        ...prev,
+        { role: "assistant", content: "Coach is offline right now. Try again soon." },
+      ]);
+    } finally {
+      setChatBusy(false);
+    }
+  }
+
+  /* selected-day totals */
   const totals = useMemo(() => {
     return entries.reduce(
       (a, e) => ({
@@ -91,7 +134,7 @@ export default function Food() {
     );
   }, [entries]);
 
-  /* ---------- compute per-day totals for the whole week (for chips on each column) ---------- */
+  /* per-day totals for the week (for the small kcal chip on each day) */
   const totalsByISO = useMemo(() => {
     const map = new Map();
     for (const d of weekDays) {
@@ -111,7 +154,7 @@ export default function Food() {
     return map;
   }, [weekDays, entriesByDay]);
 
-  /* ---------- handlers ---------- */
+  /* handlers */
   const saveEntry = (e) => {
     e.preventDefault();
     setEntriesForSelected((prev) => {
@@ -126,7 +169,8 @@ export default function Food() {
         carbs:    toNum(draft.carbs),
         fat:      toNum(draft.fat),
       };
-      return [newEntry, ...prev].sort((a, b) => a.time.localeCompare(b.time)); // keep chronological
+      // keep chronological for readability
+      return [newEntry, ...prev].sort((a, b) => a.time.localeCompare(b.time));
     });
     setShowForm(false);
     resetDraft();
@@ -136,7 +180,7 @@ export default function Food() {
     setEntriesForSelected((prev) => prev.filter((e) => e.id !== id));
   };
 
-  // when you flip weeks and the previously selected day is outside, select the Monday
+  // when switching weeks, ensure a valid selected day (fallback to monday)
   useEffect(() => {
     const weekISO = new Set(weekDays.map(toISODate));
     if (!weekISO.has(selectedDayISO)) {
@@ -185,7 +229,7 @@ export default function Food() {
                   type="button"
                   className={`day-col ${isSelected ? "selected" : ""}`}
                   onClick={() => setSelectedDayISO(iso)}
-                  title="View this day’s log"
+                  title="view this day’s log"
                 >
                   <div className="day-head">
                     <div className="day-name">{dayNames[i]}</div>
@@ -285,7 +329,7 @@ export default function Food() {
               </form>
             )}
 
-            {/* add tile (kept for keyboard/tap affordance) */}
+            {/* add tile */}
             {!showForm && (
               <button className="entry-card add" type="button" onClick={openForm}>
                 <span className="plus">＋</span>
@@ -293,7 +337,7 @@ export default function Food() {
               </button>
             )}
 
-            {/* entries (for selected day only) */}
+            {/* entries for selected day only */}
             {entries.map((e) => (
               <article className="entry-card" key={e.id}>
                 <div className="entry-head">
@@ -316,18 +360,30 @@ export default function Food() {
           </div>
         </section>
 
-        {/* right — coach */}
+        {/* right — coach (now wired to aiChat with nutrition scope) */}
         <aside className="panel-dark coach-panel">
           <header className="panel-head"><h2>AI Coach</h2></header>
           <div className="coach-avatar has-image"><img src={coachImg} alt="AI Coach" /></div>
+
           <div className="chat-log">
-            <div className="msg coach">How are your meals today?</div>
-            <div className="msg user">Good! Hit my protein at lunch.</div>
-            <div className="msg coach">Nice — keep fiber high at dinner.</div>
+            {chatLog.map((m, i) => (
+              <div key={i} className={`msg ${m.role === "user" ? "user" : "coach"}`}>
+                {m.content}
+              </div>
+            ))}
           </div>
-          <form className="chat-input" onSubmit={(e)=>e.preventDefault()}>
-            <input type="text" placeholder="Ask your coach…" />
-            <button className="btn btn--blue" type="submit">Send</button>
+
+          <form className="chat-input" onSubmit={sendCoachMessage}>
+            <input
+              type="text"
+              placeholder={chatBusy ? "Thinking…" : "Ask your coach…"}
+              value={chatDraft}
+              onChange={(e) => setChatDraft(e.target.value)}
+              disabled={chatBusy}
+            />
+            <button className="btn btn--blue" type="submit" disabled={chatBusy || !chatDraft.trim()}>
+              {chatBusy ? "…" : "Send"}
+            </button>
           </form>
         </aside>
       </div>
