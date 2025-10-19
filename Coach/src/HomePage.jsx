@@ -53,7 +53,7 @@ export default function HomePage() {
 
       <div className="container">
         <p className="welcome-mini">
-          Welcome — today is <strong>MM/DD/YYYY, HH:MM</strong>
+          Welcome to Future Coaching
         </p>
 
         
