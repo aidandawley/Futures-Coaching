@@ -27,24 +27,6 @@ Typed data model: Pydantic create/read/patch models; validation end-to-end.
 Production deploy: separate frontend & backend on Render; environment-based config.
 
 
-
-Screens
-(optional—add images to /docs and update filenames)
-
-
-Home: ![Home](docs/home.png)
-
-
-Planning: ![Planning](docs/planning.png)
-
-
-Tracker: ![Tracker](docs/tracker.png)
-
-
-AI chat: ![AI](docs/ai.png)
-
-
-
 Architecture
 Frontend (Vite/React)
   └── calls REST JSON → /users, /workouts, /sets, /ai
