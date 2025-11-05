@@ -2,7 +2,7 @@ Future Coaching
 AI-assisted workout planner & tracker. Plan your week, log sets, and reschedule by chatting with an AI coach.
 Stack: React (Vite) • FastAPI (Python) • SQLAlchemy/Pydantic • PostgreSQL (Neon) • Render • Google Gemini API
 
-Live demo: https://futures-coaching-1.onrender.com/home
+Live demo: https://futures-coaching-1.onrender.com
 (First request may “cold-start” for ~30-90s on free hosting.)
 
 
