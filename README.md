@@ -177,7 +177,7 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-Open the app at http://localhost:8080, API docs at http://localhost:8000/docs, and Prometheus at http://localhost:9090. See `DEPLOY_WINDOWS_VM.md` for the full VM deployment and metrics guide.
+Open the app at http://localhost:8080, API docs at http://localhost:8000/docs, and Prometheus at http://localhost:9090. See `DEPLOY_WINDOWS_VM.md` for the full Windows user runbook, VM deployment steps, and metrics guide.
 
 Roadmap
 
