@@ -165,6 +165,20 @@ Frontend: VITE_API_BASE_URL (prod only; dev falls back to 127.0.0.1:8000)
 
 
 
+
+## Docker deployment for Windows + Linux VM
+
+This branch includes a Docker Compose setup intended for a Windows personal machine running the app inside a Linux VM. It packages the React frontend, FastAPI backend, persistent SQLite storage, Prometheus, node-exporter, and cAdvisor so security agents can collect app, VM, and container metrics locally.
+
+Quick start:
+
+```bash
+cp .env.example .env
+docker compose up --build -d
+```
+
+Open the app at http://localhost:8080, API docs at http://localhost:8000/docs, and Prometheus at http://localhost:9090. See `DEPLOY_WINDOWS_VM.md` for the full VM deployment and metrics guide.
+
 Roadmap
 
 

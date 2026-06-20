@@ -1,5 +1,5 @@
 // src/lib/api.js
-const BASE_URL = "http://127.0.0.1:8000";
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 
 export async function fetchJSON(path, { method = "GET", body } = {}) {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -15,7 +15,9 @@ export async function fetchJSON(path, { method = "GET", body } = {}) {
       if (data?.detail) {
         message = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
       }
-    } catch {}
+    } catch {
+      // Keep the generic HTTP status message when the response body is not JSON.
+    }
     throw new Error(message);
   }
   return await res.json();
